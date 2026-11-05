@@ -30,19 +30,25 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        // Account endpoints require a verified phone token. Existing team endpoints
-        // keep their current behavior until their owners adopt the shared auth contract.
+        // Account and assigned mobility APIs require JWT; API documentation stays public.
         http.securityMatcher("/api/v1/auth/**", "/api/v1/elder-profiles/**",
-                "/api/v1/guardian-links/**", "/api/v1/notifications/**");
+                "/api/v1/guardian-links/**", "/api/v1/notifications/**",
+                "/api/v1/places/**", "/api/v1/route-plans/**", "/api/v1/trips/**",
+                "/api/v1/guardian/**", "/api/v1/appointments/**",
+                "/swagger-ui/**", "/swagger-ui.html",
+                "/v3/api-docs/**");
         http.csrf(csrf -> csrf.disable());
         if (configured()) {
             http.authorizeHttpRequests(auth -> auth
+                    .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                     .requestMatchers("/api/v1/auth/phone-verifications", "/api/v1/auth/login").permitAll()
                     .anyRequest().authenticated());
             http.oauth2ResourceServer(oauth -> oauth.jwt(jwt -> {}));
         } else {
             // No signing key: account data stays closed without blocking other modules.
-            http.authorizeHttpRequests(auth -> auth.anyRequest().denyAll());
+            http.authorizeHttpRequests(auth -> auth
+                    .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                    .anyRequest().denyAll());
         }
         return http.build();
     }
