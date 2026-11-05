@@ -36,6 +36,12 @@ class AppointmentApiTest {
     @Autowired
     private AccountService accounts;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate db;
+
+    @Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
     private static Jwt token(String subject) {
         return Jwt.withTokenValue(subject).header("alg", "HS256")
                 .issuer("https://id.example.test").subject(subject)
@@ -52,18 +58,26 @@ class AppointmentApiTest {
         Jwt user = token("appointment-owner");
         UUID elderId = UUID.fromString(elderOf(user));
         String body = """
-                {"elderId":"%s","clinicName":"OO병원","department":"정형외과",
+                {"elderId":"%s","clinicName":"OO병원","clinicAddress":"용인시 처인구","department":"정형외과",
+                 "purpose":"진료","location":"본관 2층","preparations":["금식","신분증 지참"],"needsGuardian":true,
                  "appointmentAt":"2026-11-12T10:30:00+09:00","source":"SMS"}""".formatted(elderId);
 
         String created = mockMvc.perform(post(URL).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.preparations", hasSize(2)))
+                .andExpect(jsonPath("$.needsGuardian").value(true))
                 .andReturn().getResponse().getContentAsString();
         String id = JsonPath.read(created, "$.appointmentId");
+        entityManager.flush();
+        org.assertj.core.api.Assertions.assertThat(db.queryForObject(
+                        "SELECT clinic_address_enc FROM appointments WHERE appointment_id = ?", String.class, id))
+                .doesNotContain("용인시");
 
         mockMvc.perform(get(URL + "/" + id).with(jwt().jwt(user)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.clinicName").value("OO병원"))
+                .andExpect(jsonPath("$.clinicAddress").value("용인시 처인구"))
                 .andExpect(jsonPath("$.appointmentAt").value("2026-11-12T10:30:00+09:00"));
 
         mockMvc.perform(patch(URL + "/" + id).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)

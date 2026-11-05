@@ -40,6 +40,7 @@ public class CompanionService {
         AccountService.Mobility mobility =
                 accountService.profile(jwt, appointment.getElderId().toString()).mobility();
         List<String> reasons = reasonsOf(mobility);
+        if (appointment.isNeedsGuardian()) reasons.add("ESCORT_REQUIRED_BY_CLINIC");
         CompanionAssessment saved = assessmentRepository.save(
                 new CompanionAssessment(appointmentId, RULESET_VERSION, reasons));
         return new AssessmentResponse(saved.getId(), saved.isRecommended(), reasons,

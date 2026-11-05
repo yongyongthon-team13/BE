@@ -40,11 +40,13 @@ public class CompanionRequest {
     private String providerCode;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "booking_method", nullable = false, length = 30)
     private BookingMethod bookingMethod;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false, length = 20)
     private Status status;
 
     @Column(name = "requested_at", nullable = false)

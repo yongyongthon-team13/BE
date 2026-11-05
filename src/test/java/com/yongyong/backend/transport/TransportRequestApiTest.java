@@ -30,14 +30,21 @@ class TransportRequestApiTest {
     @Autowired AccountService accounts;
     @Autowired JdbcTemplate db;
 
+    private void insertAppointment(String appointmentId, String elderId) {
+        db.update("""
+                INSERT INTO appointments(appointment_id, elder_id, clinic_name, appointment_at, source, status,
+                                         created_at, updated_at)
+                VALUES (?, ?, 'OO병원', CURRENT_TIMESTAMP, 'MANUAL', 'CONFIRMED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, appointmentId, elderId);
+    }
+
     @Test
     void createsIdempotentRequestAndEncryptsSensitiveDetails() throws Exception {
         Jwt user = token("transport-owner");
         accounts.login(user, "ELDER");
         String elderId = accounts.createProfile(user, "이동요청 테스트", 1950, null, null).elderId();
-        db.execute("CREATE TABLE IF NOT EXISTS appointments (appointment_id CHAR(36) PRIMARY KEY, elder_id CHAR(36) NOT NULL)");
         String appointmentId = UUID.randomUUID().toString();
-        db.update("INSERT INTO appointments(appointment_id, elder_id) VALUES (?, ?)", appointmentId, elderId);
+        insertAppointment(appointmentId, elderId);
         String requestBody = """
                 {"type":"ACCESSIBLE_TRANSPORT","pickupLocation":{"name":"집 주소",
                  "latitude":37.27,"longitude":127.15},"note":"현관에서 기다려주세요"}
@@ -56,7 +63,7 @@ class TransportRequestApiTest {
 
         assertThat((String) JsonPath.read(retry, "$.data.requestId")).isEqualTo(requestId);
         String otherAppointmentId = UUID.randomUUID().toString();
-        db.update("INSERT INTO appointments(appointment_id, elder_id) VALUES (?, ?)", otherAppointmentId, elderId);
+        insertAppointment(otherAppointmentId, elderId);
         String otherAppointmentRequest = mvc.perform(post("/api/v1/appointments/{id}/transport-requests", otherAppointmentId)
                         .with(jwt().jwt(user)).header("Idempotency-Key", "transport-once")
                         .contentType(MediaType.APPLICATION_JSON).content(requestBody))

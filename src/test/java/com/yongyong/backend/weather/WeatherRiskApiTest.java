@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -20,12 +21,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.web.client.RestClientException;
 
 @SpringBootTest
+@TestPropertySource(locations = "classpath:account-test.properties")
 @AutoConfigureMockMvc
 class WeatherRiskApiTest {
 
@@ -47,7 +50,7 @@ class WeatherRiskApiTest {
     }
 
     private ResultActions assess(double latitude, double longitude, OffsetDateTime departureAt) throws Exception {
-        return mockMvc.perform(get("/api/v1/weather-risk")
+        return mockMvc.perform(get("/api/v1/weather-risk").with(jwt())
                 .param("latitude", String.valueOf(latitude))
                 .param("longitude", String.valueOf(longitude))
                 .param("for", departureAt.toString()));
@@ -108,6 +111,13 @@ class WeatherRiskApiTest {
 
         given(kmaClient.getForecast(any(), any(), anyInt(), anyInt())).willThrow(new IllegalStateException("03"));
         assess(37.241, 127.178, DEPARTURE).andExpect(status().isServiceUnavailable());
+    }
+
+    @Test
+    void 토큰_없으면_401() throws Exception {
+        mockMvc.perform(get("/api/v1/weather-risk").param("latitude", "37.2").param("longitude", "127.1")
+                        .param("for", DEPARTURE.toString()))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
