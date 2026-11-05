@@ -98,8 +98,9 @@ public class AppointmentExtractionService {
 
     public AppointmentExtractionResponse extract(AppointmentExtractionRequest request) {
         OffsetDateTime receivedAt = receivedAtOrNow(request.receivedAt());
-        String input = "수신 시각: %s\n문자:\n%s".formatted(receivedAt, maskPhoneNumbers(request.text()));
-        return analyze(input, input.getBytes(StandardCharsets.UTF_8), receivedAt);
+        String masked = maskPhoneNumbers(request.text());
+        String input = "수신 시각: %s\n문자:\n%s".formatted(receivedAt, masked);
+        return analyze(input, masked.getBytes(StandardCharsets.UTF_8), receivedAt);
     }
 
     public AppointmentExtractionResponse extractImage(byte[] image, String mimeType, OffsetDateTime requestedAt) {

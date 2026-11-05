@@ -103,7 +103,7 @@ class AppointmentExtractionApiTest {
         String body = uniqueBody();
         given(geminiClient.generateJson(any(), any(), any())).willReturn(item("\"OO병원\"", "2026-11-12T10:30:00+09:00"));
         extract(body).andExpect(status().isOk());
-        extract(body).andExpect(status().isOk());
+        extract(body.replace("09:00:00", "09:30:00")).andExpect(status().isOk());
         verify(geminiClient, times(1)).generateJson(any(), any(), any());
     }
 
