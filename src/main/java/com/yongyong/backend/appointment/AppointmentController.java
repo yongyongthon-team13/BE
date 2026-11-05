@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,27 +30,29 @@ public class AppointmentController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public AppointmentResponse create(@Valid @RequestBody AppointmentCreateRequest request) {
-        return appointmentService.create(request);
+    public AppointmentResponse create(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody AppointmentCreateRequest request) {
+        return appointmentService.create(jwt, request);
     }
 
     @GetMapping
     public List<AppointmentResponse> list(
+            @AuthenticationPrincipal Jwt jwt,
             @RequestParam UUID elderId,
             @RequestParam OffsetDateTime from,
             @RequestParam OffsetDateTime to) {
-        return appointmentService.list(elderId, from, to);
+        return appointmentService.list(jwt, elderId, from, to);
     }
 
     @GetMapping("/{appointmentId}")
-    public AppointmentResponse get(@PathVariable UUID appointmentId) {
-        return appointmentService.get(appointmentId);
+    public AppointmentResponse get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID appointmentId) {
+        return appointmentService.get(jwt, appointmentId);
     }
 
     @PatchMapping("/{appointmentId}")
     public AppointmentResponse update(
+            @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID appointmentId,
             @Valid @RequestBody AppointmentUpdateRequest request) {
-        return appointmentService.update(appointmentId, request);
+        return appointmentService.update(jwt, appointmentId, request);
     }
 }

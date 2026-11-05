@@ -17,6 +17,8 @@ import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "appointments", indexes = @Index(columnList = "elder_id, appointment_at, status"))
@@ -30,10 +32,12 @@ public class Appointment {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "appointment_id")
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "appointment_id", length = 36)
     private UUID id;
 
-    @Column(name = "elder_id", nullable = false)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "elder_id", nullable = false, length = 36)
     private UUID elderId;
 
     @Column(name = "clinic_name", nullable = false)
@@ -100,5 +104,10 @@ public class Appointment {
         if (request.department() != null) department = request.department();
         if (request.status() != null) status = request.status();
         updatedAt = OffsetDateTime.now();
+    }
+
+    public void assistByGuardian(AppointmentUpdateRequest request) {
+        update(request);
+        source = Source.GUARDIAN;
     }
 }

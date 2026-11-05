@@ -9,4 +9,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
 
     List<Appointment> findByElderIdAndAppointmentAtBetweenOrderByAppointmentAt(
             UUID elderId, OffsetDateTime from, OffsetDateTime to);
+
+    List<Appointment> findByElderIdAndAppointmentAtGreaterThanEqualOrderByAppointmentAt(
+            UUID elderId, OffsetDateTime from);
 }
