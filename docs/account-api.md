@@ -37,7 +37,7 @@ export APP_JWT_SECRET="$(openssl rand -base64 32)"
 ./gradlew bootRun
 ```
 
-두 키는 운영 환경에서 안전하게 보관해야 합니다. `APP_DATA_KEY`를 잃으면 저장된 개인정보를 복호화할 수 없고, `APP_JWT_SECRET`을 바꾸면 기존 전화번호 계정을 같은 사람으로 찾을 수 없습니다. 저장소에 실제 키를 커밋하지 않습니다. 키가 없어도 팀 서버는 시작하지만 계정 API는 닫힙니다.
+두 키는 운영 환경에서 안전하게 보관해야 합니다. `APP_DATA_KEY`를 잃으면 저장된 개인정보를 복호화할 수 없고, `APP_JWT_SECRET`을 바꾸면 기존 전화번호 계정을 같은 사람으로 찾을 수 없습니다. 저장소에 실제 키를 커밋하지 않습니다. 둘 중 하나라도 없으면 팀 서버는 시작하지만 계정 API는 닫힙니다.
 
 실제 SMS는 Naver Cloud SENS 설정이 있어야 발송됩니다. `SMS_PROVIDER=ncloud`, `NCLOUD_SMS_SERVICE_ID`, `NCLOUD_ACCESS_KEY`, `NCLOUD_SECRET_KEY`, `NCLOUD_SMS_SENDER`(SENS에 등록된 발신번호)를 서버 환경변수로 지정합니다. 설정이 없으면 인증번호 요청은 `503`입니다. 로컬 테스트는 SMS 대역으로 코드 검증·토큰 발급까지 확인하며, 실제 휴대전화 수신은 계정 정보가 제공된 뒤 별도 확인해야 합니다.
 

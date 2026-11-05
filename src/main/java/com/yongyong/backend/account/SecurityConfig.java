@@ -26,6 +26,7 @@ public class SecurityConfig {
     static final String ISSUER = "https://auth.yongyongthon.example/phone";
     static final String AUDIENCE = "yongyongthon-api";
     @Value("${app.auth.jwt-secret:}") private String encodedSecret;
+    @Value("${app.data-key:}") private String encodedDataKey;
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -78,6 +79,6 @@ public class SecurityConfig {
     }
 
     boolean configured() {
-        return !encodedSecret.isBlank();
+        return !encodedSecret.isBlank() && !encodedDataKey.isBlank();
     }
 }

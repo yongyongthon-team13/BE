@@ -9,7 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 
-@SpringBootTest(properties = "app.auth.jwt-secret=")
+@SpringBootTest(properties = {"app.auth.jwt-secret=", "app.data-key="})
 @AutoConfigureMockMvc
 class AccountSecurityBoundaryTest {
     @Autowired MockMvc mvc;
