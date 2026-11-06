@@ -8,6 +8,7 @@ public record ExtractedAppointment(
         Type type,
         String clinicName,
         String department,
+        String purpose,
         OffsetDateTime appointmentAt,
         OffsetDateTime previousAt,
         String location,
@@ -19,7 +20,7 @@ public record ExtractedAppointment(
     public enum Type { NEW, CHANGE, CANCEL }
 
     public ExtractedAppointment markedForReview() {
-        return new ExtractedAppointment(type, clinicName, department, appointmentAt, previousAt, location,
+        return new ExtractedAppointment(type, clinicName, department, purpose, appointmentAt, previousAt, location,
                 preparations, needsGuardian, true, confidence);
     }
 }

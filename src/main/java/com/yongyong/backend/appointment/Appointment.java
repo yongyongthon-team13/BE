@@ -3,6 +3,7 @@ package com.yongyong.backend.appointment;
 import com.yongyong.backend.appointment.dto.AppointmentCreateRequest;
 import com.yongyong.backend.appointment.dto.AppointmentUpdateRequest;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -13,10 +14,13 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "appointments", indexes = @Index(columnList = "elder_id, appointment_at, status"))
@@ -30,15 +34,18 @@ public class Appointment {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "appointment_id")
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "appointment_id", length = 36)
     private UUID id;
 
-    @Column(name = "elder_id", nullable = false)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "elder_id", nullable = false, length = 36)
     private UUID elderId;
 
     @Column(name = "clinic_name", nullable = false)
     private String clinicName;
 
+    @Convert(converter = EncryptedStringConverter.class)
     @Column(name = "clinic_address_enc", columnDefinition = "text")
     private String clinicAddress;
 
@@ -54,12 +61,25 @@ public class Appointment {
     @Column(length = 100)
     private String department;
 
+    @Column(length = 100)
+    private String purpose;
+
+    private String location;
+
+    @Column(columnDefinition = "text")
+    private String preparations;
+
+    @Column(name = "needs_guardian", nullable = false)
+    private boolean needsGuardian;
+
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false, length = 20)
     private Source source;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false, length = 20)
     private Status status;
 
     @Column(name = "extraction_confidence", precision = 4, scale = 3)
@@ -83,6 +103,10 @@ public class Appointment {
         this.clinicLon = request.clinicLon();
         this.appointmentAt = request.appointmentAt();
         this.department = request.department();
+        this.purpose = request.purpose();
+        this.location = request.location();
+        this.preparations = join(request.preparations());
+        this.needsGuardian = Boolean.TRUE.equals(request.needsGuardian());
         this.source = request.source();
         this.status = Status.CONFIRMED;
         this.extractionConfidence = request.extractionConfidence();
@@ -98,7 +122,24 @@ public class Appointment {
         if (request.clinicLon() != null) clinicLon = request.clinicLon();
         if (request.appointmentAt() != null) appointmentAt = request.appointmentAt();
         if (request.department() != null) department = request.department();
+        if (request.purpose() != null) purpose = request.purpose();
+        if (request.location() != null) location = request.location();
+        if (request.preparations() != null) preparations = join(request.preparations());
+        if (request.needsGuardian() != null) needsGuardian = request.needsGuardian();
         if (request.status() != null) status = request.status();
         updatedAt = OffsetDateTime.now();
+    }
+
+    public List<String> getPreparationList() {
+        return preparations == null || preparations.isEmpty() ? List.of() : List.of(preparations.split("\n"));
+    }
+
+    private static String join(List<String> items) {
+        return items == null ? null : String.join("\n", items);
+    }
+
+    public void assistByGuardian(AppointmentUpdateRequest request) {
+        update(request);
+        source = Source.GUARDIAN;
     }
 }

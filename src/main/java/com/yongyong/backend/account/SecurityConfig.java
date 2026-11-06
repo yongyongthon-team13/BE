@@ -35,6 +35,7 @@ public class SecurityConfig {
                 "/api/v1/guardian-links/**", "/api/v1/notifications/**",
                 "/api/v1/places/**", "/api/v1/route-plans/**", "/api/v1/trips/**",
                 "/api/v1/guardian/**", "/api/v1/appointments/**",
+                "/api/v1/appointment-extractions/**", "/api/v1/weather-risk/**",
                 "/swagger-ui/**", "/swagger-ui.html",
                 "/v3/api-docs/**");
         http.csrf(csrf -> csrf.disable());
