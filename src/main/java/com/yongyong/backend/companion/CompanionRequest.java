@@ -52,11 +52,27 @@ public class CompanionRequest {
     @Column(name = "requested_at", nullable = false)
     private OffsetDateTime requestedAt;
 
+    @Column(name = "pickup_at")
+    private OffsetDateTime pickupAt;
+
+    @Column(name = "pickup_place")
+    private String pickupPlace;
+
+    @Column(name = "manager_name", length = 100)
+    private String managerName;
+
     public CompanionRequest(UUID appointmentId, String providerCode, BookingMethod bookingMethod) {
         this.appointmentId = appointmentId;
         this.providerCode = providerCode;
         this.bookingMethod = bookingMethod;
         this.status = Status.PENDING;
         this.requestedAt = OffsetDateTime.now();
+    }
+
+    public void updateAfterCall(Status status, OffsetDateTime pickupAt, String pickupPlace, String managerName) {
+        this.status = status;
+        this.pickupAt = pickupAt;
+        this.pickupPlace = pickupPlace;
+        this.managerName = managerName;
     }
 }

@@ -138,6 +138,110 @@ class CompanionGuardianApiTest {
     }
 
     @Test
+    void 못_읽은_일정은_보호자가_채우면_확정된다() throws Exception {
+        Jwt user = token("help-elder");
+        String elderId = elder(user, null);
+        Jwt guardian = linkedGuardian(user, elderId, "help-guardian");
+
+        mockMvc.perform(post(APPOINTMENTS).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"elderId":"%s","clinicName":"OO병원","source":"SMS"}""".formatted(elderId)))
+                .andExpect(status().isBadRequest());
+        String draft = mockMvc.perform(post(APPOINTMENTS).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"elderId":"%s","clinicName":"OO병원","source":"SMS","helpRequested":true}""".formatted(elderId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("DRAFT"))
+                .andExpect(jsonPath("$.helpRequested").value(true))
+                .andReturn().getResponse().getContentAsString();
+        String id = JsonPath.read(draft, "$.appointmentId");
+
+        request(user, id).andExpect(status().isConflict());
+        mockMvc.perform(get(GUARDIAN + "/" + elderId + "/pending-tasks").with(jwt().jwt(guardian)))
+                .andExpect(jsonPath("$.helpRequests", hasSize(1)))
+                .andExpect(jsonPath("$.helpRequests[0].appointmentId").value(id));
+
+        mockMvc.perform(post(GUARDIAN + "/" + elderId + "/appointments/" + id + "/assist").with(jwt().jwt(guardian))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"appointmentAt\":\"2030-01-01T10:00:00+09:00\"}"))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.helpRequested").value(false));
+        mockMvc.perform(get(GUARDIAN + "/" + elderId + "/pending-tasks").with(jwt().jwt(guardian)))
+                .andExpect(jsonPath("$.helpRequests", hasSize(0)));
+    }
+
+    @Test
+    void 전화_대본과_통화_후_픽업_정보() throws Exception {
+        Jwt user = token("script-elder");
+        accounts.login(user, "ELDER");
+        String elderId = accounts.createProfile(user, "김영자", 1950, "처인구 OO로",
+                new AccountService.MobilityUpdate("CANE", null, null, null)).elderId();
+        String body = """
+                {"elderId":"%s","clinicName":"OO병원","department":"내과",
+                 "appointmentAt":"2030-01-08T10:00:00+09:00","source":"MANUAL"}""".formatted(elderId);
+        String appointmentId = JsonPath.read(mockMvc.perform(post(APPOINTMENTS).with(jwt().jwt(user))
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andReturn().getResponse().getContentAsString(), "$.appointmentId");
+
+        String created = request(user, appointmentId)
+                .andExpect(jsonPath("$.callScript").value("병원 동행 신청하고자 전화드렸습니다. 1월 8일 화요일 오전 10시 OO병원 내과입니다. 처인구 OO로에서 출발합니다. 지팡이를 써서 차가 필요해요."))
+                .andExpect(jsonPath("$.applicantName").value("김영자"))
+                .andExpect(jsonPath("$.demo").value(true))
+                .andReturn().getResponse().getContentAsString();
+        String requestId = JsonPath.read(created, "$.requestId");
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch(APPOINTMENTS + "/" + appointmentId + "/companion-requests/" + requestId)
+                        .with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.pickupAt").value("2030-01-08T08:30:00+09:00"))
+                .andExpect(jsonPath("$.pickupPlace").value("집 앞"));
+
+        mockMvc.perform(get(APPOINTMENTS + "/" + appointmentId).with(jwt().jwt(user)))
+                .andExpect(jsonPath("$.companion.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.companion.managerName").value("동행 매니저"));
+        mockMvc.perform(get(APPOINTMENTS + "/" + appointmentId + "/companion-requests").with(jwt().jwt(user)))
+                .andExpect(jsonPath("$", hasSize(1)));
+    }
+
+    @Test
+    void 출발_전_상태로_차량_다시_추천() throws Exception {
+        Jwt user = token("departure-elder");
+        String appointmentId = appointment(user, elder(user, null), "2030-01-01T10:00:00+09:00");
+        String url = APPOINTMENTS + "/" + appointmentId + "/departure-checks";
+
+        mockMvc.perform(post(url).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"condition\":\"GOOD\",\"usesCane\":false}"))
+                .andExpect(jsonPath("$.recommendCar").value(false));
+        mockMvc.perform(post(url).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"condition\":\"BAD\",\"usesCane\":true}"))
+                .andExpect(jsonPath("$.recommendCar").value(true))
+                .andExpect(jsonPath("$.reasonCodes", hasSize(2)));
+    }
+
+    @Test
+    void 지난_진료_기록은_한_번만_작성() throws Exception {
+        Jwt user = token("review-elder");
+        String elderId = elder(user, null);
+        String past = appointment(user, elderId, "2020-01-01T10:00:00+09:00");
+        Jwt guardian = linkedGuardian(user, elderId, "review-guardian");
+        String url = APPOINTMENTS + "/" + past + "/visit-reviews";
+        String body = "{\"transport\":\"COMPANION\",\"onTime\":true}";
+
+        mockMvc.perform(get(GUARDIAN + "/" + elderId + "/pending-tasks").with(jwt().jwt(guardian)))
+                .andExpect(jsonPath("$.visitReviews", hasSize(1)));
+        mockMvc.perform(post(url).with(jwt().jwt(guardian)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post(url).with(jwt().jwt(guardian)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict());
+        mockMvc.perform(get(GUARDIAN + "/" + elderId + "/pending-tasks").with(jwt().jwt(guardian)))
+                .andExpect(jsonPath("$.visitReviews", hasSize(0)));
+        mockMvc.perform(get(APPOINTMENTS + "/" + past).with(jwt().jwt(guardian)))
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+    }
+
+    @Test
     void 보호자_일정_입력_보조() throws Exception {
         Jwt user = token("assist-elder");
         String elderId = elder(user, null);

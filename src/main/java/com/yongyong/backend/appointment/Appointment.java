@@ -32,6 +32,8 @@ public class Appointment {
 
     public enum Status { DRAFT, CONFIRMED, CANCELLED, COMPLETED }
 
+    public enum ClinicSize { SMALL, MEDIUM, LARGE }
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @JdbcTypeCode(SqlTypes.CHAR)
@@ -42,8 +44,13 @@ public class Appointment {
     @Column(name = "elder_id", nullable = false, length = 36)
     private UUID elderId;
 
-    @Column(name = "clinic_name", nullable = false)
+    @Column(name = "clinic_name")
     private String clinicName;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "clinic_size", length = 10)
+    private ClinicSize clinicSize;
 
     @Convert(converter = EncryptedStringConverter.class)
     @Column(name = "clinic_address_enc", columnDefinition = "text")
@@ -55,7 +62,7 @@ public class Appointment {
     @Column(name = "clinic_lon", precision = 9, scale = 6)
     private BigDecimal clinicLon;
 
-    @Column(name = "appointment_at", nullable = false)
+    @Column(name = "appointment_at")
     private OffsetDateTime appointmentAt;
 
     @Column(length = 100)
@@ -85,6 +92,9 @@ public class Appointment {
     @Column(name = "extraction_confidence", precision = 4, scale = 3)
     private BigDecimal extractionConfidence;
 
+    @Column(name = "help_requested_at")
+    private OffsetDateTime helpRequestedAt;
+
     @Column(name = "confirmed_at")
     private OffsetDateTime confirmedAt;
 
@@ -98,6 +108,7 @@ public class Appointment {
         OffsetDateTime now = OffsetDateTime.now();
         this.elderId = request.elderId();
         this.clinicName = request.clinicName();
+        this.clinicSize = request.clinicSize();
         this.clinicAddress = request.clinicAddress();
         this.clinicLat = request.clinicLat();
         this.clinicLon = request.clinicLon();
@@ -108,15 +119,18 @@ public class Appointment {
         this.preparations = join(request.preparations());
         this.needsGuardian = Boolean.TRUE.equals(request.needsGuardian());
         this.source = request.source();
-        this.status = Status.CONFIRMED;
+        boolean helpRequested = Boolean.TRUE.equals(request.helpRequested());
+        this.status = helpRequested ? Status.DRAFT : Status.CONFIRMED;
+        this.helpRequestedAt = helpRequested ? now : null;
         this.extractionConfidence = request.extractionConfidence();
-        this.confirmedAt = now;
+        this.confirmedAt = helpRequested ? null : now;
         this.createdAt = now;
         this.updatedAt = now;
     }
 
     public void update(AppointmentUpdateRequest request) {
         if (request.clinicName() != null) clinicName = request.clinicName();
+        if (request.clinicSize() != null) clinicSize = request.clinicSize();
         if (request.clinicAddress() != null) clinicAddress = request.clinicAddress();
         if (request.clinicLat() != null) clinicLat = request.clinicLat();
         if (request.clinicLon() != null) clinicLon = request.clinicLon();
@@ -128,6 +142,11 @@ public class Appointment {
         if (request.needsGuardian() != null) needsGuardian = request.needsGuardian();
         if (request.status() != null) status = request.status();
         updatedAt = OffsetDateTime.now();
+        if (status == Status.DRAFT && clinicName != null && appointmentAt != null) {
+            status = Status.CONFIRMED;
+            confirmedAt = updatedAt;
+            helpRequestedAt = null;
+        }
     }
 
     public List<String> getPreparationList() {
@@ -136,6 +155,11 @@ public class Appointment {
 
     private static String join(List<String> items) {
         return items == null ? null : String.join("\n", items);
+    }
+
+    public void complete() {
+        status = Status.COMPLETED;
+        updatedAt = OffsetDateTime.now();
     }
 
     public void assistByGuardian(AppointmentUpdateRequest request) {

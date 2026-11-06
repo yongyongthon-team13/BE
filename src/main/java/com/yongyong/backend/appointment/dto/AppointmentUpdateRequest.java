@@ -11,6 +11,7 @@ import java.util.List;
 
 public record AppointmentUpdateRequest(
         @Size(min = 1, max = 255) String clinicName,
+        Appointment.ClinicSize clinicSize,
         String clinicAddress,
         @DecimalMin("-90") @DecimalMax("90") BigDecimal clinicLat,
         @DecimalMin("-180") @DecimalMax("180") BigDecimal clinicLon,

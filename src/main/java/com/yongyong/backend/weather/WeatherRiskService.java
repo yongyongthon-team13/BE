@@ -74,7 +74,7 @@ public class WeatherRiskService {
             level = RiskLevel.WARNING;
         }
 
-        return new WeatherRiskResponse(level, hazards, warnings, warningChecked, simulated,
+        return new WeatherRiskResponse(level, level != RiskLevel.NORMAL, hazards, warnings, warningChecked, simulated,
                 integer(forecast.get("TMP")), integer(forecast.get("POP")), departureAt);
     }
 

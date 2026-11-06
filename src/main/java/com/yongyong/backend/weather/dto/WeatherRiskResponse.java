@@ -5,6 +5,7 @@ import java.util.List;
 
 public record WeatherRiskResponse(
         RiskLevel riskLevel,
+        boolean recommendCar,
         List<Hazard> hazardCodes,
         List<String> warnings,
         boolean warningChecked,

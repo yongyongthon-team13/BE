@@ -145,6 +145,15 @@ class AppointmentExtractionApiTest {
     }
 
     @Test
+    void 병원_규모_이름_규칙() {
+        assertThat(AppointmentExtractionService.clinicSizeOf("OO대학교병원")).isEqualTo("LARGE");
+        assertThat(AppointmentExtractionService.clinicSizeOf("OO내과의원")).isEqualTo("SMALL");
+        assertThat(AppointmentExtractionService.clinicSizeOf("OO안과")).isEqualTo("SMALL");
+        assertThat(AppointmentExtractionService.clinicSizeOf("OO병원")).isEqualTo("MEDIUM");
+        assertThat(AppointmentExtractionService.clinicSizeOf(null)).isNull();
+    }
+
+    @Test
     void 전화번호_형식별_마스킹() {
         assertThat(AppointmentExtractionService.maskPhoneNumbers("010-1234-5678 1588-0000 0312345678 11/12 10:30"))
                 .isEqualTo("[전화번호] [전화번호] [전화번호] 11/12 10:30");
