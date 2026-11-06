@@ -127,7 +127,7 @@ class PhoneAuthServiceTest {
         assertThat(renewed.userId()).isEqualTo(first.userId());
         assertThat(renewed.role()).isEqualTo("GUARDIAN");
         assertThat(renewed.refreshToken()).isNotEqualTo(first.refreshToken());
-        assertThat(renewed.refreshExpiresAt()).isEqualTo(first.refreshExpiresAt());
+        assertThat(renewed.refreshExpiresAt()).isAfter(first.refreshExpiresAt());
         assertThat(accounts.current(decoder.decode(renewed.accessToken())).userId()).isEqualTo(first.userId());
         assertThatThrownBy(() -> auth.refresh(first.refreshToken()))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("401");

@@ -141,11 +141,13 @@ public class PhoneAuthService {
         Instant now = Instant.now();
         if (!session.expiresAt().isAfter(now)) invalidRefreshToken();
         String replacement = newRefreshToken();
-        db.update("UPDATE auth_sessions SET refresh_token_hash = ?, last_used_at = ? WHERE session_id = ?",
-                digest("refresh:" + replacement), Timestamp.from(now), session.sessionId());
+        Instant refreshedExpiry = now.plus(REFRESH_TOKEN_LIFETIME_DAYS, ChronoUnit.DAYS);
+        db.update("UPDATE auth_sessions SET refresh_token_hash = ?, last_used_at = ?, expires_at = ? " +
+                        "WHERE session_id = ?", digest("refresh:" + replacement), Timestamp.from(now),
+                Timestamp.from(refreshedExpiry), session.sessionId());
         Jwt jwt = issueAccessToken(session.subject(), now, session.sessionId());
         return new LoginResult(jwt.getTokenValue(), "Bearer", jwt.getExpiresAt(), replacement,
-                session.expiresAt(), session.userId(), session.role());
+                refreshedExpiry, session.userId(), session.role());
     }
 
     @Transactional
