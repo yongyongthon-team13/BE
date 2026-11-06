@@ -24,6 +24,8 @@ public class GuardianAppointmentService {
 
     public record ElderSummary(String elderId, String name, Integer birthYear, String relationship) {}
 
+    public record PendingTasks(List<AppointmentResponse> helpRequests, List<AppointmentResponse> visitReviews) {}
+
     private record Link(String elderId, String relationship) {}
 
     private final AccountService accountService;
@@ -57,8 +59,19 @@ public class GuardianAppointmentService {
         return appointmentRepository
                 .findByElderIdAndAppointmentAtGreaterThanEqualOrderByAppointmentAt(elderId, OffsetDateTime.now())
                 .stream()
-                .map(AppointmentResponse::from)
+                .map(appointmentService::toResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PendingTasks pendingTasks(Jwt jwt, UUID elderId) {
+        requireGuardian(jwt);
+        accountService.profile(jwt, elderId.toString());
+        return new PendingTasks(
+                appointmentRepository.findByElderIdAndHelpRequestedAtIsNotNullOrderByHelpRequestedAt(elderId).stream()
+                        .map(appointmentService::toResponse).toList(),
+                appointmentRepository.findUnreviewedVisits(elderId, OffsetDateTime.now()).stream()
+                        .map(appointmentService::toResponse).toList());
     }
 
     @Transactional
@@ -69,7 +82,7 @@ public class GuardianAppointmentService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "일정을 찾을 수 없습니다.");
         }
         appointment.assistByGuardian(request);
-        return AppointmentResponse.from(appointment);
+        return appointmentService.toResponse(appointment);
     }
 
     private AccountService.User requireGuardian(Jwt jwt) {

@@ -32,6 +32,12 @@ public class GuardianAppointmentController {
         return guardianAppointmentService.upcomingAppointments(jwt, elderId);
     }
 
+    @GetMapping("/{elderId}/pending-tasks")
+    public GuardianAppointmentService.PendingTasks pendingTasks(@AuthenticationPrincipal Jwt jwt,
+                                                                @PathVariable UUID elderId) {
+        return guardianAppointmentService.pendingTasks(jwt, elderId);
+    }
+
     @PostMapping("/{elderId}/appointments/{appointmentId}/assist")
     public AppointmentResponse assist(@AuthenticationPrincipal Jwt jwt,
                                       @PathVariable UUID elderId,

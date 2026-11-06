@@ -76,6 +76,7 @@ class WeatherRiskApiTest {
         forecast(Map.of("PTY", "1", "POP", "80", "PCP", "1mm 미만", "WSD", "2", "TMP", "15"));
         assess(37.241, 127.178, DEPARTURE)
                 .andExpect(jsonPath("$.riskLevel").value("CAUTION"))
+                .andExpect(jsonPath("$.recommendCar").value(true))
                 .andExpect(jsonPath("$.hazardCodes[0]").value("RAIN"));
 
         forecast(Map.of("PTY", "1", "POP", "90", "PCP", "30.0~50.0mm", "WSD", "2", "TMP", "15"));

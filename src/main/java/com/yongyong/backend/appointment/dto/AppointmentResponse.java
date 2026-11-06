@@ -10,6 +10,7 @@ public record AppointmentResponse(
         UUID appointmentId,
         UUID elderId,
         String clinicName,
+        Appointment.ClinicSize clinicSize,
         String clinicAddress,
         BigDecimal clinicLat,
         BigDecimal clinicLon,
@@ -22,13 +23,19 @@ public record AppointmentResponse(
         Appointment.Source source,
         Appointment.Status status,
         BigDecimal extractionConfidence,
-        OffsetDateTime confirmedAt) {
+        OffsetDateTime confirmedAt,
+        boolean helpRequested,
+        CompanionSummary companion) {
 
-    public static AppointmentResponse from(Appointment appointment) {
+    public record CompanionSummary(String status, OffsetDateTime pickupAt, String pickupPlace, String managerName) {
+    }
+
+    public static AppointmentResponse from(Appointment appointment, CompanionSummary companion) {
         return new AppointmentResponse(
                 appointment.getId(),
                 appointment.getElderId(),
                 appointment.getClinicName(),
+                appointment.getClinicSize(),
                 appointment.getClinicAddress(),
                 appointment.getClinicLat(),
                 appointment.getClinicLon(),
@@ -41,6 +48,8 @@ public record AppointmentResponse(
                 appointment.getSource(),
                 appointment.getStatus(),
                 appointment.getExtractionConfidence(),
-                appointment.getConfirmedAt());
+                appointment.getConfirmedAt(),
+                appointment.getHelpRequestedAt() != null,
+                companion);
     }
 }
