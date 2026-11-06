@@ -112,4 +112,84 @@ class PhoneAuthServiceTest {
         assertThatThrownBy(() -> auth.login("01022223333", code, "ELDER"))
                 .isInstanceOf(ResponseStatusException.class);
     }
+
+    @Test
+    void refreshRotatesTokenAndLogoutEndsThatDeviceSession() {
+        auth.requestCode("01033334444");
+        String code = sentMessage.get().replaceAll(".*인증번호 ([0-9]{6}).*", "$1");
+        PhoneAuthService.LoginResult first = auth.login("01033334444", code, "GUARDIAN");
+        assertThat(first.refreshToken()).matches("[A-Za-z0-9_-]{43}");
+        assertThat(first.refreshExpiresAt()).isAfter(first.expiresAt());
+        assertThat(db.queryForObject("SELECT refresh_token_hash FROM auth_sessions", String.class))
+                .doesNotContain(first.refreshToken());
+
+        PhoneAuthService.LoginResult renewed = auth.refresh(first.refreshToken());
+        assertThat(renewed.userId()).isEqualTo(first.userId());
+        assertThat(renewed.role()).isEqualTo("GUARDIAN");
+        assertThat(renewed.refreshToken()).isNotEqualTo(first.refreshToken());
+        assertThat(renewed.refreshExpiresAt()).isEqualTo(first.refreshExpiresAt());
+        assertThat(accounts.current(decoder.decode(renewed.accessToken())).userId()).isEqualTo(first.userId());
+        assertThatThrownBy(() -> auth.refresh(first.refreshToken()))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("401");
+
+        auth.logout(renewed.refreshToken());
+        assertThatThrownBy(() -> auth.refresh(renewed.refreshToken()))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("401");
+        assertThatThrownBy(() -> decoder.decode(renewed.accessToken())).isInstanceOf(Exception.class);
+    }
+
+    @Test
+    void expiredRefreshTokenCannotIssueAnotherAccessToken() {
+        auth.requestCode("01055556666");
+        String code = sentMessage.get().replaceAll(".*인증번호 ([0-9]{6}).*", "$1");
+        PhoneAuthService.LoginResult login = auth.login("01055556666", code, "ELDER");
+        db.update("UPDATE auth_sessions SET expires_at = ?",
+                java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(1)));
+        assertThatThrownBy(() -> auth.refresh(login.refreshToken()))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("401");
+    }
+
+    @Test
+    void loggingOutOneDeviceDoesNotEndAnotherDeviceSession() {
+        auth.requestCode("01099990000");
+        String firstCode = sentMessage.get().replaceAll(".*인증번호 ([0-9]{6}).*", "$1");
+        PhoneAuthService.LoginResult first = auth.login("01099990000", firstCode, "ELDER");
+        db.update("UPDATE phone_verifications SET sent_at = TIMESTAMP '2000-01-01 00:00:00' " +
+                "WHERE phone_hash IS NOT NULL");
+        auth.requestCode("01099990000");
+        String secondCode = sentMessage.get().replaceAll(".*인증번호 ([0-9]{6}).*", "$1");
+        PhoneAuthService.LoginResult second = auth.login("01099990000", secondCode, "ELDER");
+
+        auth.logout(first.refreshToken());
+        assertThatThrownBy(() -> decoder.decode(first.accessToken())).isInstanceOf(Exception.class);
+        assertThat(accounts.current(decoder.decode(second.accessToken())).userId()).isEqualTo(first.userId());
+        assertThat(auth.refresh(second.refreshToken()).userId()).isEqualTo(second.userId());
+    }
+
+    @Test
+    void refreshAndLogoutEndpointsWorkWithoutAnUnexpiredAccessToken() throws Exception {
+        auth.requestCode("01077778888");
+        String code = sentMessage.get().replaceAll(".*인증번호 ([0-9]{6}).*", "$1");
+        PhoneAuthService.LoginResult login = auth.login("01077778888", code, "ELDER");
+        String refreshed = mvc.perform(post("/api/v1/auth/refresh")
+                .contentType("application/json")
+                .content("{\"refreshToken\":\"" + login.refreshToken() + "\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(refreshed).contains("\"refreshToken\"").doesNotContain(login.refreshToken());
+        String replacement = new com.fasterxml.jackson.databind.ObjectMapper().readTree(refreshed)
+                .get("refreshToken").asText();
+        mvc.perform(post("/api/v1/auth/refresh")
+                .contentType("application/json")
+                .content("{\"refreshToken\":\"" + login.refreshToken() + "\"}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/v1/auth/logout")
+                .contentType("application/json")
+                .content("{\"refreshToken\":\"" + replacement + "\"}"))
+                .andExpect(status().isNoContent());
+        mvc.perform(post("/api/v1/auth/refresh")
+                .contentType("application/json")
+                .content("{\"refreshToken\":\"" + replacement + "\"}"))
+                .andExpect(status().isUnauthorized());
+    }
 }

@@ -7,8 +7,11 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import org.springframework.http.HttpStatus;
@@ -26,6 +29,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class PhoneAuthService {
     private static final int CODE_LIFETIME_SECONDS = 300;
+    private static final int ACCESS_TOKEN_LIFETIME_SECONDS = 3600;
+    private static final int REFRESH_TOKEN_LIFETIME_DAYS = 30;
     private final JdbcTemplate db;
     private final AccountService accounts;
     private final SmsSender sms;
@@ -44,9 +49,12 @@ public class PhoneAuthService {
     }
 
     public record LoginResult(String accessToken, String tokenType, Instant expiresAt,
+                              String refreshToken, Instant refreshExpiresAt,
                               String userId, String role) {}
     private record Challenge(String codeHash, Instant expiresAt, int attempts, Instant sentAt,
                              LocalDate sentDay, int dailyCount, Instant consumedAt) {}
+    private record Session(String sessionId, String userId, String subject, String role,
+                           Instant expiresAt) {}
 
     @Transactional
     public void requestCode(String input) {
@@ -101,15 +109,74 @@ public class PhoneAuthService {
         if (!MessageDigest.isEqual(challenge.codeHash().getBytes(StandardCharsets.US_ASCII),
                                    suppliedHash.getBytes(StandardCharsets.US_ASCII))) invalidCode();
 
-        Instant expiry = now.plusSeconds(3600);
-        JwtClaimsSet claims = JwtClaimsSet.builder().issuer(SecurityConfig.ISSUER)
-                .subject(phoneHash).audience(List.of(SecurityConfig.AUDIENCE))
-                .issuedAt(now).expiresAt(expiry).build();
-        Jwt jwt = encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims));
+        String sessionId = UUID.randomUUID().toString();
+        Jwt jwt = issueAccessToken(phoneHash, now, sessionId);
         AccountService.User user = accounts.login(jwt, role);
         db.update("UPDATE phone_verifications SET consumed_at = ? WHERE phone_hash = ?",
                 Timestamp.from(now), phoneHash);
-        return new LoginResult(jwt.getTokenValue(), "Bearer", expiry, user.userId(), user.role());
+        String refreshToken = newRefreshToken();
+        Instant refreshExpiresAt = now.plus(REFRESH_TOKEN_LIFETIME_DAYS, ChronoUnit.DAYS);
+        db.update("INSERT INTO auth_sessions(session_id, user_id, refresh_token_hash, expires_at) " +
+                "VALUES (?, ?, ?, ?)", sessionId, user.userId(),
+                digest("refresh:" + refreshToken), Timestamp.from(refreshExpiresAt));
+        return new LoginResult(jwt.getTokenValue(), "Bearer", jwt.getExpiresAt(), refreshToken,
+                refreshExpiresAt, user.userId(), user.role());
+    }
+
+    @Transactional
+    public LoginResult refresh(String refreshToken) {
+        requireConfigured();
+        String tokenHash = refreshHash(refreshToken);
+        List<Session> sessions = db.query("""
+                SELECT s.session_id, s.user_id, i.subject, u.role, s.expires_at
+                FROM auth_sessions s
+                JOIN app_users u ON u.user_id = s.user_id AND u.deleted_at IS NULL
+                JOIN user_identities i ON i.user_id = s.user_id AND i.issuer = ?
+                WHERE s.refresh_token_hash = ? AND s.revoked_at IS NULL
+                FOR UPDATE
+                """, (rs, n) -> new Session(rs.getString(1), rs.getString(2), rs.getString(3),
+                rs.getString(4), rs.getTimestamp(5).toInstant()), SecurityConfig.ISSUER, tokenHash);
+        if (sessions.isEmpty()) invalidRefreshToken();
+        Session session = sessions.get(0);
+        Instant now = Instant.now();
+        if (!session.expiresAt().isAfter(now)) invalidRefreshToken();
+        String replacement = newRefreshToken();
+        db.update("UPDATE auth_sessions SET refresh_token_hash = ?, last_used_at = ? WHERE session_id = ?",
+                digest("refresh:" + replacement), Timestamp.from(now), session.sessionId());
+        Jwt jwt = issueAccessToken(session.subject(), now, session.sessionId());
+        return new LoginResult(jwt.getTokenValue(), "Bearer", jwt.getExpiresAt(), replacement,
+                session.expiresAt(), session.userId(), session.role());
+    }
+
+    @Transactional
+    public void logout(String refreshToken) {
+        requireConfigured();
+        String tokenHash = refreshHash(refreshToken);
+        db.update("UPDATE auth_sessions SET revoked_at = CURRENT_TIMESTAMP(6) " +
+                "WHERE refresh_token_hash = ? AND revoked_at IS NULL", tokenHash);
+    }
+
+    private Jwt issueAccessToken(String subject, Instant now, String sessionId) {
+        JwtClaimsSet claims = JwtClaimsSet.builder().issuer(SecurityConfig.ISSUER)
+                .subject(subject).audience(List.of(SecurityConfig.AUDIENCE))
+                .issuedAt(now).expiresAt(now.plusSeconds(ACCESS_TOKEN_LIFETIME_SECONDS))
+                .claim("sid", sessionId).build();
+        return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims));
+    }
+
+    private String newRefreshToken() {
+        byte[] bytes = new byte[32];
+        random.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private String refreshHash(String refreshToken) {
+        if (refreshToken == null || !refreshToken.matches("[A-Za-z0-9_-]{43}")) invalidRefreshToken();
+        return digest("refresh:" + refreshToken);
+    }
+
+    private static void invalidRefreshToken() {
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired refresh token");
     }
 
     private List<Challenge> challenge(String phoneHash) {

@@ -5,6 +5,7 @@ import java.util.Base64;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -42,7 +43,8 @@ public class SecurityConfig {
         if (configured()) {
             http.authorizeHttpRequests(auth -> auth
                     .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                    .requestMatchers("/api/v1/auth/phone-verifications", "/api/v1/auth/login").permitAll()
+                    .requestMatchers("/api/v1/auth/phone-verifications", "/api/v1/auth/login",
+                            "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
                     .anyRequest().authenticated());
             http.oauth2ResourceServer(oauth -> oauth.jwt(jwt -> {}));
         } else {
@@ -55,7 +57,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    JwtDecoder jwtDecoder() {
+    JwtDecoder jwtDecoder(JdbcTemplate db) {
         if (!configured()) {
             return token -> { throw new IllegalStateException("APP_JWT_SECRET is required"); };
         }
@@ -64,8 +66,21 @@ public class SecurityConfig {
             jwt.getAudience().contains(AUDIENCE)
                 ? OAuth2TokenValidatorResult.success()
                 : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Invalid audience", null));
+        OAuth2TokenValidator<Jwt> sessionValidator = jwt -> {
+            String sessionId = jwt.getClaimAsString("sid");
+            // Previously issued access tokens have no session ID and expire within an hour.
+            if (sessionId == null) return OAuth2TokenValidatorResult.success();
+            Integer active = db.queryForObject("""
+                    SELECT COUNT(*) FROM auth_sessions s JOIN app_users u ON u.user_id = s.user_id
+                    WHERE s.session_id = ? AND s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP(6)
+                      AND u.deleted_at IS NULL
+                    """, Integer.class, sessionId);
+            return active != null && active > 0
+                    ? OAuth2TokenValidatorResult.success()
+                    : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Session has ended", null));
+        };
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-            List.of(JwtValidators.createDefaultWithIssuer(ISSUER), audienceValidator)));
+            List.of(JwtValidators.createDefaultWithIssuer(ISSUER), audienceValidator, sessionValidator)));
         return decoder;
     }
 

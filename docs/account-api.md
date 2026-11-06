@@ -6,9 +6,13 @@
 
 1. `POST /api/v1/auth/phone-verifications`에 `{"phoneNumber":"01012345678"}`을 보냅니다. SMS 요청이 접수되면 `202`를 반환합니다.
 2. 받은 인증번호로 `POST /api/v1/auth/login`에 `{"phoneNumber":"01012345678","verificationCode":"123456","role":"ELDER"}`을 보냅니다. 보호자는 `role`을 `GUARDIAN`으로 지정합니다.
-3. 응답의 `accessToken`을 계정 API 호출 시 `Authorization: Bearer <accessToken>`으로 보냅니다.
+3. 응답의 `accessToken`을 API 호출 시 `Authorization: Bearer <accessToken>`으로 보냅니다. `refreshToken`은 기기에서 안전하게 보관합니다.
+4. `accessToken`이 만료되면 `POST /api/v1/auth/refresh`에 `{"refreshToken":"..."}`을 보내 새 토큰 쌍을 받습니다. 이전 `refreshToken`은 즉시 무효가 되므로 새 토큰으로 교체해 저장합니다.
+5. 로그아웃할 때 `POST /api/v1/auth/logout`에 현재 `refreshToken`을 보내고 기기에 저장한 두 토큰을 삭제합니다. 해당 기기의 접근 토큰도 즉시 무효화되며 다른 기기에서 쓰는 토큰에는 영향을 주지 않습니다.
 
-로그인 응답에는 `accessToken`, `tokenType`, `expiresAt`, `userId`, `role`이 있습니다. 토큰은 1시간, 인증번호는 5분 유효하며 한 번만 쓸 수 있습니다. 번호별 인증번호 요청은 60초 간격·UTC 하루 10회, 인증번호 확인은 코드당 5회로 제한합니다. 같은 번호로 다른 역할에 로그인하려 하면 `409`를 반환합니다. 인증번호가 틀렸거나 만료되면 `400`, SMS 발송 서비스가 없으면 `503`입니다.
+인증번호를 확인할 때 계정이 없으면 새로 만들고, 이미 있으면 기존 계정으로 로그인합니다. 어르신과 보호자 모두 같은 절차를 사용합니다. 로그인·갱신 응답에는 `accessToken`, `tokenType`, `expiresAt`, `refreshToken`, `refreshExpiresAt`, `userId`, `role`이 있습니다. 접근 토큰은 1시간, 갱신 토큰은 최초 발급부터 30일 유효합니다. 30일이 지나거나 새 기기에서 시작하면 문자 인증이 다시 필요합니다. 로그아웃하면 해당 세션의 접근 토큰과 갱신 토큰이 모두 무효화됩니다. 클라이언트에서도 두 토큰을 삭제해야 합니다.
+
+인증번호는 5분 유효하며 한 번만 쓸 수 있습니다. 번호별 인증번호 요청은 60초 간격·UTC 하루 10회, 인증번호 확인은 코드당 5회로 제한합니다. 같은 번호로 다른 역할에 로그인하려 하면 `409`를 반환합니다. 인증번호가 틀렸거나 만료되면 `400`, SMS 발송 서비스가 없으면 `503`, 갱신 토큰이 잘못됐거나 만료되면 `401`입니다. 갱신 토큰 원문은 DB에 저장하지 않습니다.
 
 ## 나머지 API
 

@@ -35,6 +35,7 @@ public class AccountController {
     public record PhoneVerificationRequest(@NotBlank String phoneNumber) {}
     public record LoginRequest(@NotBlank String phoneNumber, @NotBlank String verificationCode,
                                @NotBlank String role) {}
+    public record RefreshRequest(@NotBlank String refreshToken) {}
     public record CreateProfileRequest(@NotBlank @Size(max = 100) String name,
                                        @Min(1900) @Max(2100) Integer birthYear,
                                        @Size(max = 500) String homeAddress,
@@ -65,6 +66,17 @@ public class AccountController {
     @PostMapping("/auth/login")
     public PhoneAuthService.LoginResult login(@Valid @RequestBody LoginRequest request) {
         return phoneAuth.login(request.phoneNumber(), request.verificationCode(), request.role());
+    }
+
+    @PostMapping("/auth/refresh")
+    public PhoneAuthService.LoginResult refresh(@Valid @RequestBody RefreshRequest request) {
+        return phoneAuth.refresh(request.refreshToken());
+    }
+
+    @PostMapping("/auth/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(@Valid @RequestBody RefreshRequest request) {
+        phoneAuth.logout(request.refreshToken());
     }
 
     @PostMapping("/elder-profiles")
