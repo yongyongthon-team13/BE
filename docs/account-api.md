@@ -43,7 +43,7 @@ export APP_JWT_SECRET="$(openssl rand -base64 32)"
 
 두 키는 운영 환경에서 안전하게 보관해야 합니다. `APP_DATA_KEY`를 잃으면 저장된 개인정보를 복호화할 수 없고, `APP_JWT_SECRET`을 바꾸면 기존 전화번호 계정을 같은 사람으로 찾을 수 없습니다. 저장소에 실제 키를 커밋하지 않습니다. 둘 중 하나라도 없으면 팀 서버는 시작하지만 계정 API는 닫힙니다.
 
-실제 SMS는 Naver Cloud SENS 설정이 있어야 발송됩니다. `SMS_PROVIDER=ncloud`, `NCLOUD_SMS_SERVICE_ID`, `NCLOUD_ACCESS_KEY`, `NCLOUD_SECRET_KEY`, `NCLOUD_SMS_SENDER`(SENS에 등록된 발신번호)를 서버 환경변수로 지정합니다. 설정이 없으면 인증번호 요청은 `503`입니다. 로컬 테스트는 SMS 대역으로 코드 검증·토큰 발급까지 확인하며, 실제 휴대전화 수신은 계정 정보가 제공된 뒤 별도 확인해야 합니다.
+실제 SMS 발송은 센드엠 API를 사용합니다. 서버 환경변수에 `SMS_PROVIDER=sendm`, `SENDM_USER_ID`(가입 아이디), `SENDM_API_KEY`(API 승인 후 발급한 키), `SENDM_SENDER`(센드엠에 등록·승인된 발신번호, 숫자만)를 지정합니다. API 호출 서버의 공인 IP도 센드엠에 등록해야 합니다. 비밀 키는 저장소나 프론트엔드에 넣지 않습니다. 설정이 없거나 발송 요청이 거절되면 인증번호 요청은 `503`입니다. 센드엠의 성공 응답은 발송 **접수**만 뜻하므로 실제 수신 테스트는 API 승인, 발신번호 등록, IP 등록 및 충전 후 확인해야 합니다. 결제 전에는 로컬 HTTP 대역 테스트로 요청 형식과 실패 처리를 확인합니다.
 
 ## 팀 연동 메모
 
