@@ -2,10 +2,9 @@
 """Check Sendm API access without sending a message or charging coins."""
 
 import getpass
+import http.client
 import json
 import sys
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 
 def main() -> int:
@@ -15,24 +14,26 @@ def main() -> int:
         print("아이디와 API 키를 모두 입력해야 합니다.")
         return 1
 
-    request = Request(
-        "https://api.sendm.co.kr/v2/info/coinInfo",
-        headers={"user-id": user_id, "api-key": api_key, "Accept": "application/json"},
-    )
+    # Keep the header names lowercase as written in Sendm's API guide.
+    # urllib.request rewrites them to "User-id" and "Api-key".
+    connection = http.client.HTTPSConnection("api.sendm.co.kr", timeout=15)
     try:
-        with urlopen(request, timeout=15) as response:
-            status = response.status
-            payload = json.load(response)
-    except HTTPError as error:
-        print(f"HTTP 오류: {error.code}")
-        return 1
-    except (URLError, TimeoutError) as error:
-        print(f"연결 실패: {error.reason if isinstance(error, URLError) else '시간 초과'}")
+        connection.putrequest("GET", "/v2/info/coinInfo")
+        connection.putheader("user-id", user_id)
+        connection.putheader("api-key", api_key)
+        connection.putheader("Accept", "application/json")
+        connection.endheaders()
+        response = connection.getresponse()
+        status = response.status
+        payload = json.load(response)
+    except (OSError, TimeoutError, http.client.HTTPException) as error:
+        print(f"연결 실패: {error}")
         return 1
     except (ValueError, UnicodeDecodeError):
         print("서버 응답을 JSON으로 읽을 수 없습니다.")
         return 1
     finally:
+        connection.close()
         api_key = None
 
     code = str(payload.get("code", ""))
