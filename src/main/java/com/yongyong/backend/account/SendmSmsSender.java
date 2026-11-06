@@ -36,10 +36,10 @@ public class SendmSmsSender extends SmsSender {
     @Autowired
     public SendmSmsSender(@Value("${app.sms.sendm.user-id:}") String userId,
                           @Value("${app.sms.sendm.api-key:}") String apiKey,
-                          @Value("${app.sms.sendm.sender:}") String sender,
-                          ObjectMapper json) {
+                          @Value("${app.sms.sendm.sender:}") String sender) {
         this(userId, apiKey, sender,
-                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(), SEND_URL, json);
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(),
+                SEND_URL, new ObjectMapper());
     }
 
     SendmSmsSender(String userId, String apiKey, String sender,
