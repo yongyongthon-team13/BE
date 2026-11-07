@@ -13,7 +13,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -33,6 +36,12 @@ public class Appointment {
     public enum Status { DRAFT, CONFIRMED, CANCELLED, COMPLETED }
 
     public enum ClinicSize { SMALL, MEDIUM, LARGE }
+
+    public static final ZoneId KOREA = ZoneId.of("Asia/Seoul");
+
+    // 같은 날이면 시간을 모르는 일정을 뒤로 보낸다
+    public static final Comparator<Appointment> BY_SCHEDULE = Comparator.comparing(Appointment::getAppointmentDate)
+            .thenComparing(Appointment::getAppointmentAt, Comparator.nullsLast(Comparator.naturalOrder()));
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -64,6 +73,11 @@ public class Appointment {
 
     @Column(name = "appointment_at")
     private OffsetDateTime appointmentAt;
+
+    // 시간을 아직 모를 때만 쓰는 날짜. 시간이 있으면 getAppointmentDate가 appointmentAt 기준으로 돌려준다
+    @Getter(AccessLevel.NONE)
+    @Column(name = "appointment_date")
+    private LocalDate appointmentDate;
 
     @Column(length = 100)
     private String department;
@@ -113,6 +127,7 @@ public class Appointment {
         this.clinicLat = request.clinicLat();
         this.clinicLon = request.clinicLon();
         this.appointmentAt = request.appointmentAt();
+        this.appointmentDate = request.appointmentDate();
         this.department = request.department();
         this.purpose = request.purpose();
         this.location = request.location();
@@ -135,6 +150,7 @@ public class Appointment {
         if (request.clinicLat() != null) clinicLat = request.clinicLat();
         if (request.clinicLon() != null) clinicLon = request.clinicLon();
         if (request.appointmentAt() != null) appointmentAt = request.appointmentAt();
+        if (request.appointmentDate() != null) appointmentDate = request.appointmentDate();
         if (request.department() != null) department = request.department();
         if (request.purpose() != null) purpose = request.purpose();
         if (request.location() != null) location = request.location();
@@ -147,6 +163,10 @@ public class Appointment {
             confirmedAt = updatedAt;
             helpRequestedAt = null;
         }
+    }
+
+    public LocalDate getAppointmentDate() {
+        return appointmentAt != null ? appointmentAt.atZoneSameInstant(KOREA).toLocalDate() : appointmentDate;
     }
 
     public List<String> getPreparationList() {

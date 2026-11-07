@@ -43,7 +43,8 @@ public class CompanionService {
     public record RequestResponse(UUID requestId, UUID appointmentId, String applicantName, String departureAddress,
                                   boolean vehicleNeeded, String providerCode,
                                   CompanionRequest.BookingMethod bookingMethod, CompanionRequest.Status status,
-                                  String serviceName, String servicePhone, int estimatedCostWon, String callScript,
+                                  String serviceName, String servicePhone, int estimatedCostWon, String reasonText,
+                                  String callScript,
                                   OffsetDateTime pickupAt, String pickupPlace, String managerName, boolean demo,
                                   OffsetDateTime requestedAt) {}
 
@@ -73,7 +74,7 @@ public class CompanionService {
     public RequestResponse request(Jwt jwt, UUID appointmentId, String providerCode,
                                    CompanionRequest.BookingMethod bookingMethod) {
         Appointment appointment = appointmentService.findAccessible(jwt, appointmentId);
-        if (appointment.getStatus() != Appointment.Status.CONFIRMED) {
+        if (appointment.getStatus() != Appointment.Status.CONFIRMED || appointment.getAppointmentAt() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "확정된 일정만 신청할 수 있습니다.");
         }
         if (requestRepository.existsByAppointmentIdAndStatusIn(appointmentId, ACTIVE_STATUSES)) {
@@ -125,6 +126,7 @@ public class CompanionService {
         return new RequestResponse(request.getId(), appointment.getId(), profile.name(), profile.homeAddress(),
                 needsVehicle(profile.mobility()), request.getProviderCode(), request.getBookingMethod(),
                 request.getStatus(), SERVICE_NAME, SERVICE_PHONE, ESTIMATED_COST_WON,
+                reasonText(profile.mobility(), appointment),
                 callScript(appointment, profile), request.getPickupAt(), request.getPickupPlace(),
                 request.getManagerName(), true, request.getRequestedAt());
     }

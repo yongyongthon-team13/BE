@@ -56,9 +56,10 @@ public class GuardianAppointmentService {
     public List<AppointmentResponse> upcomingAppointments(Jwt jwt, UUID elderId) {
         requireGuardian(jwt);
         accountService.profile(jwt, elderId.toString());
-        return appointmentRepository
-                .findByElderIdAndAppointmentAtGreaterThanEqualOrderByAppointmentAt(elderId, OffsetDateTime.now())
+        OffsetDateTime now = OffsetDateTime.now();
+        return appointmentRepository.findUpcoming(elderId, now, now.atZoneSameInstant(Appointment.KOREA).toLocalDate())
                 .stream()
+                .sorted(Appointment.BY_SCHEDULE)
                 .map(appointmentService::toResponse)
                 .toList();
     }

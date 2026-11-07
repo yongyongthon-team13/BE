@@ -106,6 +106,47 @@ class AppointmentApiTest {
     }
 
     @Test
+    void 날짜만_읽은_일정은_부탁으로_저장하고_시간을_넣으면_확정된다() throws Exception {
+        Jwt user = token("appointment-date-only");
+        String elderId = elderOf(user);
+        String partial = """
+                {"elderId":"%s","clinicName":"OO병원","appointmentDate":"2026-11-12","source":"SMS"%s}""";
+
+        mockMvc.perform(post(URL).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
+                        .content(partial.formatted(elderId, "")))
+                .andExpect(status().isBadRequest());
+
+        String created = mockMvc.perform(post(URL).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
+                        .content(partial.formatted(elderId, ",\"helpRequested\":true")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("DRAFT"))
+                .andExpect(jsonPath("$.helpRequested").value(true))
+                .andExpect(jsonPath("$.appointmentDate").value("2026-11-12"))
+                .andExpect(jsonPath("$.appointmentAt").isEmpty())
+                .andReturn().getResponse().getContentAsString();
+        String id = JsonPath.read(created, "$.appointmentId");
+
+        mockMvc.perform(post(URL).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"elderId":"%s","clinicName":"XX의원","appointmentAt":"2026-11-12T14:00:00+09:00","source":"SMS"}"""
+                                .formatted(elderId)))
+                .andExpect(status().isCreated());
+        mockMvc.perform(get(URL).with(jwt().jwt(user)).param("elderId", elderId)
+                        .param("from", "2026-11-12T00:00:00+09:00")
+                        .param("to", "2026-11-13T00:00:00+09:00"))
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].clinicName").value("XX의원"))
+                .andExpect(jsonPath("$[1].appointmentId").value(id))
+                .andExpect(jsonPath("$[1].helpRequested").value(true));
+
+        mockMvc.perform(patch(URL + "/" + id).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"appointmentAt\":\"2026-11-13T00:30:00+09:00\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.appointmentDate").value("2026-11-13"));
+    }
+
+    @Test
     void 토큰_없으면_401() throws Exception {
         mockMvc.perform(get(URL + "/" + UUID.randomUUID())).andExpect(status().isUnauthorized());
     }

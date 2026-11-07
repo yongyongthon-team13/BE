@@ -1,5 +1,6 @@
 package com.yongyong.backend.appointment;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -9,11 +10,23 @@ import org.springframework.data.repository.query.Param;
 
 public interface AppointmentRepository extends JpaRepository<Appointment, UUID> {
 
-    List<Appointment> findByElderIdAndAppointmentAtBetweenOrderByAppointmentAt(
-            UUID elderId, OffsetDateTime from, OffsetDateTime to);
+    @Query("""
+            select a from Appointment a
+            where a.elderId = :elderId
+              and (a.appointmentAt between :from and :to
+                   or (a.appointmentAt is null and a.appointmentDate between :fromDate and :toDate))
+            """)
+    List<Appointment> findInRange(@Param("elderId") UUID elderId, @Param("from") OffsetDateTime from,
+                                  @Param("to") OffsetDateTime to, @Param("fromDate") LocalDate fromDate,
+                                  @Param("toDate") LocalDate toDate);
 
-    List<Appointment> findByElderIdAndAppointmentAtGreaterThanEqualOrderByAppointmentAt(
-            UUID elderId, OffsetDateTime from);
+    @Query("""
+            select a from Appointment a
+            where a.elderId = :elderId
+              and (a.appointmentAt >= :from or (a.appointmentAt is null and a.appointmentDate >= :fromDate))
+            """)
+    List<Appointment> findUpcoming(@Param("elderId") UUID elderId, @Param("from") OffsetDateTime from,
+                                   @Param("fromDate") LocalDate fromDate);
 
     List<Appointment> findByElderIdAndHelpRequestedAtIsNotNullOrderByHelpRequestedAt(UUID elderId);
 
