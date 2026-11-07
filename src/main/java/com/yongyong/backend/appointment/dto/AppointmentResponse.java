@@ -2,6 +2,7 @@ package com.yongyong.backend.appointment.dto;
 
 import com.yongyong.backend.appointment.Appointment;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -14,6 +15,7 @@ public record AppointmentResponse(
         String clinicAddress,
         BigDecimal clinicLat,
         BigDecimal clinicLon,
+        LocalDate appointmentDate,
         OffsetDateTime appointmentAt,
         String department,
         String purpose,
@@ -39,6 +41,7 @@ public record AppointmentResponse(
                 appointment.getClinicAddress(),
                 appointment.getClinicLat(),
                 appointment.getClinicLon(),
+                appointment.getAppointmentDate(),
                 appointment.getAppointmentAt(),
                 appointment.getDepartment(),
                 appointment.getPurpose(),

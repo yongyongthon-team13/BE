@@ -89,6 +89,46 @@ class AppointmentExtractionApiTest {
     }
 
     @Test
+    void 시간이_있으면_날짜도_같이_돌려준다() throws Exception {
+        given(geminiClient.generateJson(any(), any(), any())).willReturn(item("\"OO병원\"", "2026-11-12T10:30:00+09:00"));
+        extract(uniqueBody())
+                .andExpect(jsonPath("$.items[0].appointmentDate").value("2026-11-12"))
+                .andExpect(jsonPath("$.items[0].appointmentAt").value("2026-11-12T10:30:00+09:00"));
+    }
+
+    @Test
+    void 원문에_시간이_없으면_AI가_채운_시간을_버리고_날짜만_남긴다() throws Exception {
+        given(geminiClient.generateJson(any(), any(), any())).willReturn(item("\"OO병원\"", "2026-11-12T09:00:00+09:00"));
+        extract("""
+                {"text":"[OO병원] 11월 12일 예약입니다. 8시간 전부터 금식 %d","receivedAt":"2026-11-04T09:00:00+09:00"}"""
+                .formatted(++nextText))
+                .andExpect(jsonPath("$.items[0].appointmentDate").value("2026-11-12"))
+                .andExpect(jsonPath("$.items[0].appointmentAt").isEmpty())
+                .andExpect(jsonPath("$.items[0].needsReview").value(true));
+    }
+
+    @Test
+    void 한글로_말한_시간은_그대로_둔다() throws Exception {
+        given(geminiClient.generateJson(any(), any(), any())).willReturn(item("\"OO병원\"", "2026-11-12T10:00:00+09:00"));
+        extract("""
+                {"text":"십일월 십이일 오전 열시에 OO병원 가야 돼 %d","receivedAt":"2026-11-04T09:00:00+09:00"}"""
+                .formatted(++nextText))
+                .andExpect(jsonPath("$.items[0].appointmentAt").value("2026-11-12T10:00:00+09:00"));
+    }
+
+    @Test
+    void 날짜만_읽으면_날짜를_돌려준다() throws Exception {
+        given(geminiClient.generateJson(any(), any(), any())).willReturn("""
+                {"items":[{"type":"NEW","clinicName":"OO병원","appointmentDate":"2026-11-12","appointmentAt":null,
+                "previousAt":null,"location":null,"preparations":[],"needsGuardian":false,
+                "needsReview":false,"confidence":0.9}]}""");
+        extract(uniqueBody())
+                .andExpect(jsonPath("$.items[0].appointmentDate").value("2026-11-12"))
+                .andExpect(jsonPath("$.items[0].appointmentAt").isEmpty())
+                .andExpect(jsonPath("$.items[0].needsReview").value(true));
+    }
+
+    @Test
     void 호출_실패나_깨진_응답은_503() throws Exception {
         given(geminiClient.generateJson(any(), any(), any())).willThrow(new RestClientException("429"));
         extract(uniqueBody()).andExpect(status().isServiceUnavailable());

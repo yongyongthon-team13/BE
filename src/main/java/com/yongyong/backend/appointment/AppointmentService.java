@@ -39,8 +39,10 @@ public class AppointmentService {
     @Transactional(readOnly = true)
     public List<AppointmentResponse> list(Jwt jwt, UUID elderId, OffsetDateTime from, OffsetDateTime to) {
         accountService.profile(jwt, elderId.toString());
-        return appointmentRepository.findByElderIdAndAppointmentAtBetweenOrderByAppointmentAt(elderId, from, to)
+        return appointmentRepository.findInRange(elderId, from, to,
+                        from.atZoneSameInstant(Appointment.KOREA).toLocalDate(), to.atZoneSameInstant(Appointment.KOREA).toLocalDate())
                 .stream()
+                .sorted(Appointment.BY_SCHEDULE)
                 .map(this::toResponse)
                 .toList();
     }
