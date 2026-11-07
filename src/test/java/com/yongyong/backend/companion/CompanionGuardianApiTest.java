@@ -184,6 +184,7 @@ class CompanionGuardianApiTest {
                 .andReturn().getResponse().getContentAsString(), "$.appointmentId");
 
         String created = request(user, appointmentId)
+                .andExpect(jsonPath("$.reasonText").value("지팡이 사용"))
                 .andExpect(jsonPath("$.callScript").value("병원 동행 신청하고자 전화드렸습니다. 1월 8일 화요일 오전 10시 OO병원 내과입니다. 처인구 OO로에서 출발합니다. 지팡이를 써서 차가 필요해요."))
                 .andExpect(jsonPath("$.applicantName").value("김영자"))
                 .andExpect(jsonPath("$.demo").value(true))
