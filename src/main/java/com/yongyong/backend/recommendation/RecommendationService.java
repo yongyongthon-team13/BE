@@ -40,11 +40,14 @@ public class RecommendationService {
 
     // 질병관리청 심뇌혈관질환 조기증상. AI가 놓쳐도 119 안내는 나가야 해서 AI보다 먼저 거른다
     private static final Pattern EMERGENCY_WORDS = Pattern.compile(
-            "가슴.{0,6}(짓눌|조이|조여|쥐어|터질)|숨.{0,6}(못\\s*쉬|안\\s*쉬어|막혀|막히|많이\\s*차|가빠)"
+            "가슴.{0,6}(짓눌|조이|조여|쥐어|터질)|숨.{0,6}(못\\s*쉬|안\\s*쉬어|막혀|막히|가빠|(많이|너무|심하게|엄청)\\s*차)"
                     + "|말.{0,4}어눌|발음.{0,4}(이상|꼬)|한쪽.{0,10}(힘|마비|감각)|마비|쓰러|정신을?\\s*잃|의식");
 
     // 어르신이 진료 보러 가는 곳이 아니라서 목록에서 뺀다
     private static final Set<String> EXCLUDED_KINDS = Set.of("요양병원", "한방병원", "정신병원");
+
+    // 말로 해도 피그마 버튼에 있는 아픈 곳만 고른다. 나머지는 잘 모르겠음(가정의학과)으로 간다
+    private static final Set<String> VOICE_CHOICES = Set.of("눈", "뼈·관절·허리", "귀·코·목", "이·잇몸", "배·소화", "잘 모르겠음");
 
     private static final Recommendation NOT_UNDERSTOOD = new Recommendation(false, null, null, null);
 
@@ -69,7 +72,8 @@ public class RecommendationService {
         emergency = new Recommendation(true, EMERGENCY, danger.department(), danger.basis());
 
         // 아픈 곳 목록과 말 예시를 데이터에서 그대로 가져와 프롬프트에 넣는다
-        String bodyParts = firstDepartment.values().stream()
+        List<Row> choices = firstDepartment.values().stream().filter(r -> VOICE_CHOICES.contains(r.bodyPart())).toList();
+        String bodyParts = choices.stream()
                 .map(r -> "- %s (예: %s)".formatted(r.bodyPart(), r.examples()))
                 .collect(Collectors.joining("\n"));
         systemInstruction = """
@@ -87,7 +91,7 @@ public class RecommendationService {
                  "properties": {"emergency": {"type": "boolean"},
                                 "bodyPart": {"type": "string", "enum": %s}},
                  "required": ["emergency", "bodyPart"]}
-                """.formatted(jsonMapper.writeValueAsString(firstDepartment.keySet())));
+                """.formatted(jsonMapper.writeValueAsString(choices.stream().map(Row::bodyPart).toList())));
     }
 
     public Recommendation recommend(String text, String bodyPart) {

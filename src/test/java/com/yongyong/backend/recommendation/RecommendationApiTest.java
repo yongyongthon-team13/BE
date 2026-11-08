@@ -2,6 +2,7 @@ package com.yongyong.backend.recommendation;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -53,13 +54,15 @@ class RecommendationApiTest {
         recommend("{\"text\":\"아까부터 가슴이 막 짓눌리는 것 같아\"}")
                 .andExpect(jsonPath("$.emergency").value(true))
                 .andExpect(jsonPath("$.department").value("119 신고"));
+        recommend("{\"text\":\"숨이 너무 차서 말을 못 하겠어\"}").andExpect(jsonPath("$.emergency").value(true));
         recommend("{\"bodyPart\":\"위험 증상\"}").andExpect(jsonPath("$.emergency").value(true));
         verify(geminiClient, never()).generateJson(any(), any(), any());
     }
 
     @Test
     void 말로_하면_AI가_고른_아픈_곳의_진료과를_돌려준다() throws Exception {
-        given(geminiClient.generateJson(any(), any(), any()))
+        given(geminiClient.generateJson(any(), any(), argThat(schema ->
+                schema.toString().contains("뼈·관절·허리") && !schema.toString().contains("피부"))))
                 .willReturn("{\"emergency\":false,\"bodyPart\":\"뼈·관절·허리\"}");
         recommend("{\"text\":\"무릎이 시려서 계단을 못 올라가\"}")
                 .andExpect(jsonPath("$.bodyPart").value("뼈·관절·허리"))
