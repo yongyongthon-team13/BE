@@ -21,6 +21,8 @@ public final class RouteDtos {
                                 @NotBlank String mode,
                                 Instant departureAt,
                                 @Min(1) @Max(5) Integer count) {}
+    public record RecommendationRequest(@NotBlank String elderId,
+                                        @Valid @NotNull SearchRequest routeSearch) {}
 
     public record Summary(int durationSeconds, int distanceMeters, int walkingSeconds,
                           int transferCount, int fareWon) {}
@@ -38,4 +40,7 @@ public final class RouteDtos {
                             Instant fetchedAt, Instant expiresAt, Summary summary,
                             List<Leg> legs, List<StopArrival> stopArrivals) {}
     public record SearchResult(Instant fetchedAt, Instant expiresAt, List<RoutePlan> alternatives) {}
+    public record RecommendationResponse(String status, String recommendedRoutePlanId,
+                                         String explanation, List<String> reasonCodes,
+                                         List<String> limitations, SearchResult routeSearch) {}
 }
