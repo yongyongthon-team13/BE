@@ -22,21 +22,6 @@ jobs:
       - name: Check out main
         uses: actions/checkout@v4
 
-      - name: Build Spring Boot JAR
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
-
-      - name: Package application
-        run: |
-          chmod +x ./gradlew
-          ./gradlew --no-daemon bootJar -x test
-          app_jar="$(find build/libs -maxdepth 1 -type f -name '*-SNAPSHOT.jar' ! -name '*-plain.jar' -print -quit)"
-          test -n "$app_jar"
-          cp "$app_jar" app.jar
-
       - name: Copy source and restart API
         env:
           OCI_HOST: ${{ secrets.OCI_HOST }}
