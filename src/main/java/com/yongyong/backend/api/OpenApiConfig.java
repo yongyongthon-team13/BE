@@ -23,7 +23,9 @@ public class OpenApiConfig {
                 .pathsToMatch("/api/v1/places/**", "/api/v1/route-plans/**", "/api/v1/trips/**",
                         "/api/v1/guardian/**", "/api/v1/appointments/**",
                         "/api/v1/appointment-extractions/**", "/api/v1/weather-risk/**",
-                        "/api/v1/department-recommendations/**", "/api/v1/clinics/**")
+                        "/api/v1/department-recommendations/**", "/api/v1/clinics/**",
+                        "/api/v1/auth/**", "/api/v1/elder-profiles/**",
+                        "/api/v1/guardian-links/**", "/api/v1/notifications/**")
                 .build();
     }
 }
