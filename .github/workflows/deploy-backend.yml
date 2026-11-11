@@ -62,4 +62,4 @@ jobs:
              rm -f /tmp/gilbut-backend.tar.gz && \
              printf '%s\\n' '$GITHUB_SHA' > /home/opc/gilbut-backend/.deployed-commit && \
              cd /home/opc/gilbut-backend && \
-             sudo docker compose --env-file .env.oci -f compose.oci.yaml up -d --build api"
+             docker compose --env-file .env.oci -f compose.oci.yaml up -d --build api"
