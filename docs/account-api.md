@@ -24,12 +24,34 @@
 | PUT | `/elder-profiles/{elderId}/health-profile` | 건강정보 전체 교체. `HEALTH` 동의 필요 |
 | PUT | `/elder-profiles/{elderId}/consents/{scope}` | 목적별 동의 이력 등록·철회 |
 | POST | `/elder-profiles/{elderId}/guardian-link-codes` | 보호자 연결용 10분 유효 일회용 코드 발급 |
+| GET | `/elder-profiles/me/guardians` | 어르신 본인의 활성 보호자 목록 (이름, 인증 전화번호, 관계) |
 | POST | `/guardian-links` | 보호자 계정과 어르신 연결 |
 | DELETE | `/guardian-links/{linkId}` | 본인 또는 보호자가 연결 해제 |
+| GET | `/guardian-profiles/me` | 보호자 본인 프로필 조회 |
+| PUT | `/guardian-profiles/me` | 보호자 본인 이름 등록·수정 |
 | GET | `/notifications` | 본인 알림 최근 50개 조회 |
 | PATCH | `/notifications/{notificationId}` | 본인 알림 읽음 처리 |
 
-`HEALTH`, `LOCATION`, `NOTIFICATION_CALL`, `CAREGIVER_SHARING`이 동의 범위입니다. 이름·주소·건강 메모는 AES-GCM으로 암호화하며 전화번호 원문과 인증번호 원문은 DB에 저장하지 않습니다. 개인정보 접근에는 로그인 토큰이 필요합니다.
+`HEALTH`, `LOCATION`, `NOTIFICATION_CALL`, `CAREGIVER_SHARING`이 동의 범위입니다. 어르신·보호자 이름, 주소, 건강 메모 및 보호자 전화번호는 AES-GCM으로 암호화합니다. 인증번호와 전화번호 원문은 전화번호 인증 이후 보호자 계정 연락처로 암호화 저장되는 경우를 제외하고 DB에 저장하지 않습니다. 기존 보호자 전화번호는 다음번 성공한 로그인 때 채워집니다. 보호자는 `PUT /guardian-profiles/me`로 이름을 등록해야 목록에 이름이 표시됩니다. 개인정보 접근에는 로그인 토큰이 필요합니다.
+
+### 보호자 연락처 연동
+
+- `GET /api/v1/elder-profiles/me/guardians`는 로그인한 어르신 계정에 연결된 활성 보호자만 반환합니다. 요청에 어르신 ID를 넣지 않으며, 응답의 `linkId`, `name`, `phoneNumber`, `relationship`은 119 연락 화면과 내 정보 화면에 사용할 수 있습니다.
+- `GET /api/v1/guardian-profiles/me`는 보호자 본인 프로필을 조회합니다. `PUT /api/v1/guardian-profiles/me` 요청 예시는 `{"name":"홍길동"}`이며, 이름을 AES-GCM으로 저장합니다.
+- 보호자 전화번호는 전화번호 인증이 성공한 로그인에서 받은 값을 E.164 형식(예: `+821012345678`)으로 암호화해 저장합니다. 연결된 보호자 계정은 배포 후 한 번 로그인해야 전화번호가 채워집니다. 이름은 보호자 본인이 프로필 API로 등록해야 합니다. 그 전까지 연락처 목록의 이름 또는 전화번호는 `null`일 수 있습니다.
+
+목록 응답 예시:
+
+```json
+[
+  {
+    "linkId": "guardian-link-uuid",
+    "name": "홍길동",
+    "phoneNumber": "+821012345678",
+    "relationship": "자녀"
+  }
+]
+```
 
 ## 서버 설정
 

@@ -57,6 +57,7 @@ public class AccountController {
     public record HealthRequest(@NotNull List<@Valid HealthItem> conditions) {}
     public record ConsentRequest(@NotBlank @Size(max = 50) String policyVersion, boolean granted) {}
     public record GuardianLinkRequest(@NotBlank String code, @Size(max = 50) String relationship) {}
+    public record GuardianProfileRequest(@NotBlank @Size(max = 100) String name) {}
 
     @PostMapping("/auth/phone-verifications")
     @ResponseStatus(HttpStatus.ACCEPTED)
@@ -91,6 +92,22 @@ public class AccountController {
     @GetMapping("/elder-profiles/me")
     public AccountService.Profile getOwnProfile(@AuthenticationPrincipal Jwt jwt) {
         return accounts.ownProfile(jwt);
+    }
+
+    @GetMapping("/elder-profiles/me/guardians")
+    public List<AccountService.LinkedGuardian> getOwnGuardians(@AuthenticationPrincipal Jwt jwt) {
+        return accounts.ownGuardians(jwt);
+    }
+
+    @GetMapping("/guardian-profiles/me")
+    public AccountService.GuardianProfile getGuardianProfile(@AuthenticationPrincipal Jwt jwt) {
+        return accounts.guardianProfile(jwt);
+    }
+
+    @PutMapping("/guardian-profiles/me")
+    public AccountService.GuardianProfile updateGuardianProfile(@AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody GuardianProfileRequest request) {
+        return accounts.updateGuardianProfile(jwt, request.name());
     }
 
     @GetMapping("/elder-profiles/{elderId}")
