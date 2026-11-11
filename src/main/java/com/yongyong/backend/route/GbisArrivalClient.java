@@ -85,7 +85,7 @@ public class GbisArrivalClient {
                 List<Arrival> arrivals = arrivalRows(arrivalsResponse).stream()
                         .filter(a -> normalizeRouteName(a.path("routeName").asText())
                                 .equals(normalizeRouteName(routeName)))
-                        .map(a -> arrival(a)).filter(a -> a.estimatedArrivalSeconds() != null).toList();
+                        .flatMap(a -> arrivals(a).stream()).toList();
                 if (!arrivals.isEmpty()) return new StopArrival(candidate.id(), candidate.name(), routeId,
                         routeName, "AVAILABLE", arrivals, Instant.now());
             }
@@ -122,10 +122,25 @@ public class GbisArrivalClient {
         return new StopCandidate(node.path("stationId").asText(""), node.path("stationName").asText(""),
                 node.path("distance").asDouble(-1));
     }
-    private Arrival arrival(JsonNode node) {
-        int minutes = node.path("predictTime1").asInt(-1);
-        if (minutes < 0) minutes = node.path("predictTime2").asInt(-1);
-        return new Arrival(minutes < 0 ? null : minutes * 60, "UNKNOWN");
+    static List<Arrival> arrivals(JsonNode node) {
+        List<Arrival> result = new ArrayList<>();
+        for (int index = 1; index <= 2; index++) {
+            int minutes = node.path("predictTime" + index).asInt(-1);
+            if (minutes >= 0) result.add(new Arrival(minutes * 60, vehicleType(node.path("lowPlate" + index).asInt(-1))));
+        }
+        return List.copyOf(result);
+    }
+
+    private static String vehicleType(int lowPlate) {
+        return switch (lowPlate) {
+            case 0 -> "STANDARD";
+            case 1 -> "LOW_FLOOR";
+            case 2 -> "DOUBLE_DECKER";
+            case 5 -> "CHARTER";
+            case 6 -> "RESERVED";
+            case 7 -> "TROLLEY";
+            default -> "UNKNOWN";
+        };
     }
     private static String normalize(String value) { return value == null ? "" : value.replaceAll("\\s+", "").toLowerCase(); }
     private static String normalizeRouteName(String value) {

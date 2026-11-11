@@ -30,9 +30,14 @@ public class AccountService {
 
     public record User(String userId, String role) {}
     public record Mobility(String mobilityAid, boolean stairsDifficult, boolean busDifficult,
-                           boolean longWalkDifficult) {}
+                           boolean longWalkDifficult, boolean walkingDiscomfort) {}
     public record MobilityUpdate(String mobilityAid, Boolean stairsDifficult, Boolean busDifficult,
-                                 Boolean longWalkDifficult) {}
+                                 Boolean longWalkDifficult, Boolean walkingDiscomfort) {
+        public MobilityUpdate(String mobilityAid, Boolean stairsDifficult, Boolean busDifficult,
+                              Boolean longWalkDifficult) {
+            this(mobilityAid, stairsDifficult, busDifficult, longWalkDifficult, null);
+        }
+    }
     public record Profile(String elderId, String name, Integer birthYear, String homeAddress,
                           Mobility mobility, List<HealthCondition> healthConditions) {}
     public record HealthCondition(String conditionCode, String note) {}
@@ -117,9 +122,9 @@ public class AccountService {
     }
 
     private Mobility mobility(String elderId) {
-        return db.queryForObject("SELECT mobility_aid, stairs_difficult, bus_difficult, long_walk_difficult " +
-                "FROM mobility_profiles WHERE elder_id = ?", (rs, n) -> new Mobility(rs.getString(1),
-                rs.getBoolean(2), rs.getBoolean(3), rs.getBoolean(4)), elderId);
+        return db.queryForObject("SELECT mobility_aid, stairs_difficult, bus_difficult, long_walk_difficult, " +
+                "walking_discomfort FROM mobility_profiles WHERE elder_id = ?", (rs, n) -> new Mobility(rs.getString(1),
+                rs.getBoolean(2), rs.getBoolean(3), rs.getBoolean(4), rs.getBoolean(5)), elderId);
     }
 
     private void updateMobility(String elderId, MobilityUpdate update) {
@@ -131,10 +136,11 @@ public class AccountService {
                 UPDATE mobility_profiles SET mobility_aid = COALESCE(?, mobility_aid),
                   stairs_difficult = COALESCE(?, stairs_difficult),
                   bus_difficult = COALESCE(?, bus_difficult),
-                  long_walk_difficult = COALESCE(?, long_walk_difficult), updated_at = CURRENT_TIMESTAMP(6)
+                  long_walk_difficult = COALESCE(?, long_walk_difficult),
+                  walking_discomfort = COALESCE(?, walking_discomfort), updated_at = CURRENT_TIMESTAMP(6)
                 WHERE elder_id = ?
                 """, update.mobilityAid(), update.stairsDifficult(), update.busDifficult(),
-                update.longWalkDifficult(), elderId);
+                update.longWalkDifficult(), update.walkingDiscomfort(), elderId);
     }
 
     @Transactional
@@ -158,11 +164,18 @@ public class AccountService {
     @Transactional
     public void recordConsent(Jwt jwt, String elderId, String scope, String policyVersion, boolean granted) {
         requireOwner(current(jwt), elderId);
-        if (!List.of("HEALTH", "LOCATION", "NOTIFICATION_CALL", "CAREGIVER_SHARING").contains(scope))
+        if (!List.of("HEALTH", "LOCATION", "NOTIFICATION_CALL", "CAREGIVER_SHARING",
+                "AI_ROUTE_RECOMMENDATION").contains(scope))
             badRequest("Unknown consent scope");
         db.update("INSERT INTO consent_records(consent_id, elder_id, scope, policy_version, granted, withdrawn_at) " +
                         "VALUES (?, ?, ?, ?, ?, ?)", id(), elderId, scope, policyVersion, granted,
                 granted ? null : java.sql.Timestamp.from(Instant.now()));
+    }
+
+    public void requireConsent(Jwt jwt, String elderId, String scope) {
+        requireProfileAccess(current(jwt), elderId);
+        if (!consented(elderId, scope))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Consent is required for this operation");
     }
 
     @Transactional

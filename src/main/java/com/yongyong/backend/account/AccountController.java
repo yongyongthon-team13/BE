@@ -45,10 +45,11 @@ public class AccountController {
                                        @Size(max = 500) String homeAddress,
                                        MobilityRequest mobility) {}
     public record MobilityRequest(String mobilityAid, Boolean stairsDifficult,
-                                  Boolean busDifficult, Boolean longWalkDifficult) {
+                                  Boolean busDifficult, Boolean longWalkDifficult,
+                                  Boolean walkingDiscomfort) {
         AccountService.MobilityUpdate toUpdate() {
             return new AccountService.MobilityUpdate(mobilityAid, stairsDifficult,
-                    busDifficult, longWalkDifficult);
+                    busDifficult, longWalkDifficult, walkingDiscomfort);
         }
     }
     public record HealthItem(@NotBlank @Size(max = 50) String conditionCode,
