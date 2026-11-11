@@ -1,14 +1,22 @@
 package com.yongyong.backend.recommendation;
 
 import com.yongyong.backend.appointment.extraction.GeminiClient;
+import com.yongyong.backend.place.PlaceApiException;
+import com.yongyong.backend.place.PlaceDtos.Location;
+import com.yongyong.backend.place.PlaceDtos.Place;
+import com.yongyong.backend.place.TmapPlaceClient;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -25,10 +33,14 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class RecommendationService {
 
+    private static final Duration COORDINATE_CACHE_TTL = Duration.ofHours(23);
+    private static final Duration EMPTY_COORDINATE_CACHE_TTL = Duration.ofMinutes(10);
+
     public record Recommendation(boolean emergency, String bodyPart, String department, String basis) {}
 
     public record Clinic(String name, String kind, String clinicSize, String address, String phone,
-                         boolean specialist, String nearestStop, Integer stopDistanceM) {}
+                         boolean specialist, String nearestStop, Integer stopDistanceM,
+                         Double latitude, Double longitude) {}
 
     private record Row(String bodyPart, String examples, String department, int departmentRank, String basis,
                        String district, int districtRank, String name, String kind, String address, String phone,
@@ -52,15 +64,19 @@ public class RecommendationService {
     private static final Recommendation NOT_UNDERSTOOD = new Recommendation(false, null, null, null);
 
     private final GeminiClient geminiClient;
+    private final TmapPlaceClient tmapPlaceClient;
     private final JsonMapper jsonMapper;
+    private final ConcurrentMap<String, CachedLocation> coordinateCache = new ConcurrentHashMap<>();
     private final List<Row> rows;
     private final Map<String, Row> firstDepartment;
     private final Recommendation emergency;
     private final String systemInstruction;
     private final JsonNode schema;
 
-    RecommendationService(GeminiClient geminiClient, JsonMapper jsonMapper) throws IOException {
+    RecommendationService(GeminiClient geminiClient, TmapPlaceClient tmapPlaceClient,
+                          JsonMapper jsonMapper) throws IOException {
         this.geminiClient = geminiClient;
+        this.tmapPlaceClient = tmapPlaceClient;
         this.jsonMapper = jsonMapper;
         try (InputStream in = new ClassPathResource("data/symptom_clinics.tsv").getInputStream()) {
             rows = new String(in.readAllBytes(), StandardCharsets.UTF_8).lines().skip(1)
@@ -124,11 +140,57 @@ public class RecommendationService {
                 .filter(r -> district == null || r.district().equals(district))
                 .sorted(Comparator.comparing(Row::specialist).reversed().thenComparingInt(Row::districtRank))
                 .forEach(r -> byName.putIfAbsent(r.name(), r));
-        return byName.values().stream().limit(3)
-                .map(r -> new Clinic(r.name(), r.kind(), clinicSize(r.kind()), r.address(), r.phone(),
-                        r.specialist(), r.nearestStop(), r.stopDistanceM()))
+        return byName.values().stream().limit(3).toList().parallelStream()
+                .map(this::clinic)
                 .toList();
     }
+
+    private Clinic clinic(Row row) {
+        Location location = clinicLocation(row);
+        return new Clinic(row.name(), row.kind(), clinicSize(row.kind()), row.address(), row.phone(),
+                row.specialist(), row.nearestStop(), row.stopDistanceM(),
+                location == null ? null : location.latitude(), location == null ? null : location.longitude());
+    }
+
+    private Location clinicLocation(Row row) {
+        String key = row.name() + "|" + row.address();
+        Instant now = Instant.now();
+        CachedLocation cached = coordinateCache.get(key);
+        if (cached != null && now.isBefore(cached.expiresAt())) return cached.location();
+
+        Location location = resolveClinicLocation(row);
+        coordinateCache.put(key, new CachedLocation(location,
+                now.plus(location == null ? EMPTY_COORDINATE_CACHE_TTL : COORDINATE_CACHE_TTL)));
+        return location;
+    }
+
+    private Location resolveClinicLocation(Row row) {
+        try {
+            var result = tmapPlaceClient.search(row.name() + " " + row.address(), 10);
+            List<Place> exactNameInDistrict = result.places().stream()
+                    .filter(place -> normalize(place.name()).equals(normalize(row.name())))
+                    .filter(place -> normalize(place.address()).contains(normalize(row.district())))
+                    .toList();
+            String road = java.util.Arrays.stream(row.address().split("\\s+"))
+                    .filter(token -> token.endsWith("로") || token.endsWith("길"))
+                    .findFirst().orElse("");
+            List<Place> addressMatches = exactNameInDistrict.stream()
+                    .filter(place -> !road.isBlank() && normalize(place.address()).contains(normalize(road)))
+                    .toList();
+            if (addressMatches.size() == 1) return addressMatches.get(0).location();
+            if (road.isBlank() && exactNameInDistrict.size() == 1) return exactNameInDistrict.get(0).location();
+            return null;
+        } catch (PlaceApiException exception) {
+            log.warn("병원 좌표 확인 실패: {}", exception.code());
+            return null;
+        }
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.replaceAll("\\s+", "").replaceAll("[^\\p{L}\\p{N}]", "");
+    }
+
+    private record CachedLocation(Location location, Instant expiresAt) {}
 
     private static Recommendation recommendation(Row row) {
         return new Recommendation(false, row.bodyPart(), row.department(), row.basis());

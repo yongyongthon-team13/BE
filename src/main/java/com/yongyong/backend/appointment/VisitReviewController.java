@@ -20,9 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class VisitReviewController {
 
-    public record VisitReviewBody(@NotNull VisitReview.Transport transport, @NotNull Boolean onTime) {}
+    public record VisitReviewBody(@NotNull VisitReview.Transport transport, @NotNull Boolean onTime,
+                                  UUID routePlanId, VisitReview.RouteRating routeRating) {}
 
     public record VisitReviewResponse(UUID reviewId, VisitReview.Transport transport, boolean onTime,
+                                      UUID routePlanId, VisitReview.RouteRating routeRating,
                                       OffsetDateTime reviewedAt) {}
 
     private final AppointmentService appointmentService;
@@ -31,7 +33,9 @@ public class VisitReviewController {
     @ResponseStatus(HttpStatus.CREATED)
     public VisitReviewResponse create(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID appointmentId,
                                       @Valid @RequestBody VisitReviewBody body) {
-        VisitReview saved = appointmentService.createVisitReview(jwt, appointmentId, body.transport(), body.onTime());
-        return new VisitReviewResponse(saved.getId(), saved.getTransport(), saved.isOnTime(), saved.getReviewedAt());
+        VisitReview saved = appointmentService.createVisitReview(jwt, appointmentId, body.transport(), body.onTime(),
+                body.routePlanId(), body.routeRating());
+        return new VisitReviewResponse(saved.getId(), saved.getTransport(), saved.isOnTime(), saved.getRoutePlanId(),
+                saved.getRouteRating(), saved.getReviewedAt());
     }
 }
