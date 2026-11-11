@@ -2,6 +2,8 @@ package com.yongyong.backend.route;
 
 import com.yongyong.backend.api.ApiEnvelope;
 import com.yongyong.backend.route.RouteDtos.RoutePlan;
+import com.yongyong.backend.route.RouteDtos.RecommendationRequest;
+import com.yongyong.backend.route.RouteDtos.RecommendationResponse;
 import com.yongyong.backend.route.RouteDtos.SearchRequest;
 import com.yongyong.backend.route.RouteDtos.SearchResult;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -23,12 +25,22 @@ import org.springframework.web.bind.annotation.RestController;
 @SecurityRequirement(name = "bearerAuth")
 public class RoutePlanController {
     private final RoutePlanService routePlans;
-    public RoutePlanController(RoutePlanService routePlans) { this.routePlans = routePlans; }
+    private final RouteRecommendationService recommendations;
+    public RoutePlanController(RoutePlanService routePlans, RouteRecommendationService recommendations) {
+        this.routePlans = routePlans;
+        this.recommendations = recommendations;
+    }
 
     @PostMapping("/search")
     public ResponseEntity<ApiEnvelope<SearchResult>> search(@AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody SearchRequest request) {
         return ResponseEntity.ok(ApiEnvelope.success(routePlans.search(jwt, request)));
+    }
+
+    @PostMapping("/recommendations")
+    public ResponseEntity<ApiEnvelope<RecommendationResponse>> recommend(@AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody RecommendationRequest request) {
+        return ResponseEntity.ok(ApiEnvelope.success(recommendations.recommend(jwt, request)));
     }
 
     @GetMapping("/{routePlanId}")

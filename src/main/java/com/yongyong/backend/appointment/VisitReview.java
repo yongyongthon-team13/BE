@@ -23,6 +23,7 @@ import org.hibernate.type.SqlTypes;
 public class VisitReview {
 
     public enum Transport { BUS, COMPANION, TAXI, GUARDIAN }
+    public enum RouteRating { GOOD, BAD }
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -42,13 +43,25 @@ public class VisitReview {
     @Column(name = "on_time", nullable = false)
     private boolean onTime;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "route_plan_id", length = 36)
+    private UUID routePlanId;
+
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "route_rating", length = 10)
+    private RouteRating routeRating;
+
     @Column(name = "reviewed_at", nullable = false)
     private OffsetDateTime reviewedAt;
 
-    public VisitReview(UUID appointmentId, Transport transport, boolean onTime) {
+    public VisitReview(UUID appointmentId, Transport transport, boolean onTime,
+                       UUID routePlanId, RouteRating routeRating) {
         this.appointmentId = appointmentId;
         this.transport = transport;
         this.onTime = onTime;
+        this.routePlanId = routePlanId;
+        this.routeRating = routeRating;
         this.reviewedAt = OffsetDateTime.now();
     }
 }

@@ -6,6 +6,7 @@ import com.yongyong.backend.appointment.dto.AppointmentResponse;
 import com.yongyong.backend.appointment.dto.AppointmentUpdateRequest;
 import com.yongyong.backend.companion.CompanionRequest;
 import com.yongyong.backend.companion.CompanionRequestRepository;
+import com.yongyong.backend.route.RoutePlanService;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -24,6 +25,7 @@ public class AppointmentService {
     private final AccountService accountService;
     private final CompanionRequestRepository companionRequestRepository;
     private final VisitReviewRepository visitReviewRepository;
+    private final RoutePlanService routePlanService;
 
     @Transactional
     public AppointmentResponse create(Jwt jwt, AppointmentCreateRequest request) {
@@ -60,12 +62,18 @@ public class AppointmentService {
     }
 
     @Transactional
-    public VisitReview createVisitReview(Jwt jwt, UUID appointmentId, VisitReview.Transport transport, boolean onTime) {
+    public VisitReview createVisitReview(Jwt jwt, UUID appointmentId, VisitReview.Transport transport, boolean onTime,
+                                         UUID routePlanId, VisitReview.RouteRating routeRating) {
         Appointment appointment = findAccessible(jwt, appointmentId);
+        if (routeRating != null && routePlanId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "routeRating requires routePlanId");
+        }
+        if (routePlanId != null) routePlanService.requireOwned(jwt, routePlanId.toString());
         if (visitReviewRepository.existsByAppointmentId(appointmentId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 작성한 기록이 있습니다.");
         }
-        VisitReview review = visitReviewRepository.save(new VisitReview(appointmentId, transport, onTime));
+        VisitReview review = visitReviewRepository.save(new VisitReview(appointmentId, transport, onTime,
+                routePlanId, routeRating));
         appointment.complete();
         return review;
     }

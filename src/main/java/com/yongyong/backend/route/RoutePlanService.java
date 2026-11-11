@@ -99,6 +99,14 @@ public class RoutePlanService {
         catch (JacksonException exception) { throw new IllegalStateException("Stored route plan is invalid", exception); }
     }
 
+    public void requireOwned(Jwt jwt, String routePlanId) {
+        String userId = accounts.current(jwt).userId();
+        if (db.query("SELECT route_plan_id FROM route_plans WHERE route_plan_id = ? AND owner_user_id = ?",
+                (rs, n) -> rs.getString(1), routePlanId, userId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Route plan not found");
+        }
+    }
+
     private static RoutePlan withArrivals(RoutePlan plan, List<RouteDtos.StopArrival> arrivals) {
         return new RoutePlan(plan.routePlanId(), plan.provider(), plan.mode(), plan.fetchedAt(), plan.expiresAt(),
                 plan.summary(), plan.legs(), arrivals);
