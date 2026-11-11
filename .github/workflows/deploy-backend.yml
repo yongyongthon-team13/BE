@@ -58,9 +58,8 @@ jobs:
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
             "$OCI_USER@$OCI_HOST" \
-            "find /home/opc/gilbut-backend -mindepth 1 -maxdepth 1 ! -name '.env*' -exec rm -rf -- {} + && \
-             tar -xzf /tmp/gilbut-backend.tar.gz -C /home/opc/gilbut-backend && \
+            "tar -xzf /tmp/gilbut-backend.tar.gz -C /home/opc/gilbut-backend && \
              rm -f /tmp/gilbut-backend.tar.gz && \
+             printf '%s\\n' '$GITHUB_SHA' > /home/opc/gilbut-backend/.deployed-commit && \
              cd /home/opc/gilbut-backend && \
-             sudo docker compose --env-file .env.oci -f compose.oci.yaml up -d --build api && \
-             printf '%s\\n' '$GITHUB_SHA' > /home/opc/gilbut-backend/.deployed-commit"
+             sudo docker compose --env-file .env.oci -f compose.oci.yaml up -d --build api"
