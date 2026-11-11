@@ -45,9 +45,16 @@ public class AccountService {
                                String status, Instant sentAt, Instant readAt) {}
     public record LinkCode(String code, Instant expiresAt) {}
     public record GuardianLink(String linkId, String elderId, String status) {}
+    public record GuardianProfile(String name, String phoneNumber) {}
+    public record LinkedGuardian(String linkId, String name, String phoneNumber, String relationship) {}
 
     @Transactional(noRollbackFor = ResponseStatusException.class)
     public User login(Jwt jwt, String role) {
+        return login(jwt, role, null);
+    }
+
+    @Transactional(noRollbackFor = ResponseStatusException.class)
+    public User login(Jwt jwt, String role, String verifiedPhoneNumber) {
         if (!List.of("ELDER", "GUARDIAN").contains(role)) badRequest("role must be ELDER or GUARDIAN");
         String issuer = jwt.getIssuer().toString();
         String subject = jwt.getSubject();
@@ -58,13 +65,21 @@ public class AccountService {
         if (!existing.isEmpty()) {
             if (!existing.get(0).role().equals(role))
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "This phone number already has a different role");
+            saveVerifiedGuardianPhone(existing.get(0), verifiedPhoneNumber);
             return existing.get(0);
         }
         String userId = id();
         db.update("INSERT INTO app_users(user_id, role) VALUES (?, ?)", userId, role);
         db.update("INSERT INTO user_identities(identity_id, user_id, issuer, subject) VALUES (?, ?, ?, ?)",
                 id(), userId, issuer, subject);
+        saveVerifiedGuardianPhone(new User(userId, role), verifiedPhoneNumber);
         return new User(userId, role);
+    }
+
+    private void saveVerifiedGuardianPhone(User user, String verifiedPhoneNumber) {
+        if ("GUARDIAN".equals(user.role()) && verifiedPhoneNumber != null)
+            db.update("UPDATE app_users SET phone_number_enc = ? WHERE user_id = ?",
+                    cipher.encrypt(verifiedPhoneNumber), user.userId());
     }
 
     public User current(Jwt jwt) {
@@ -114,6 +129,54 @@ public class AccountService {
                 (rs, n) -> rs.getString(1), user.userId());
         if (elderIds.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found");
         return profile(jwt, elderIds.get(0));
+    }
+
+    public List<LinkedGuardian> ownGuardians(Jwt jwt) {
+        User elder = current(jwt);
+        requireRole(elder, "ELDER");
+        List<String> elderIds = db.query("SELECT elder_id FROM elder_profiles WHERE user_id = ?",
+                (rs, n) -> rs.getString(1), elder.userId());
+        if (elderIds.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found");
+        return db.query("""
+                SELECT gl.link_id, gp.display_name_enc, u.phone_number_enc, gl.relationship
+                FROM guardian_links gl
+                JOIN app_users u ON u.user_id = gl.guardian_user_id AND u.role = 'GUARDIAN'
+                LEFT JOIN guardian_profiles gp ON gp.guardian_user_id = gl.guardian_user_id
+                WHERE gl.elder_id = ? AND gl.status = 'ACTIVE' AND u.deleted_at IS NULL
+                ORDER BY gl.linked_at, gl.link_id
+                """, (rs, n) -> new LinkedGuardian(rs.getString(1), cipher.decrypt(rs.getString(2)),
+                cipher.decrypt(rs.getString(3)), rs.getString(4)), elderIds.get(0));
+    }
+
+    @Transactional
+    public GuardianProfile updateGuardianProfile(Jwt jwt, String name) {
+        User guardian = current(jwt);
+        requireRole(guardian, "GUARDIAN");
+        String encryptedName = cipher.encrypt(name);
+        db.update("""
+                INSERT INTO guardian_profiles(guardian_user_id, display_name_enc)
+                VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE display_name_enc = VALUES(display_name_enc),
+                  updated_at = CURRENT_TIMESTAMP(6)
+                """, guardian.userId(), encryptedName);
+        return guardianProfile(guardian.userId());
+    }
+
+    public GuardianProfile guardianProfile(Jwt jwt) {
+        User guardian = current(jwt);
+        requireRole(guardian, "GUARDIAN");
+        return guardianProfile(guardian.userId());
+    }
+
+    private GuardianProfile guardianProfile(String guardianUserId) {
+        List<GuardianProfile> rows = db.query("""
+                SELECT gp.display_name_enc, u.phone_number_enc
+                FROM app_users u LEFT JOIN guardian_profiles gp ON gp.guardian_user_id = u.user_id
+                WHERE u.user_id = ? AND u.deleted_at IS NULL
+                """, (rs, n) -> new GuardianProfile(cipher.decrypt(rs.getString(1)),
+                cipher.decrypt(rs.getString(2))), guardianUserId);
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Guardian not found");
+        return rows.get(0);
     }
 
     @Transactional

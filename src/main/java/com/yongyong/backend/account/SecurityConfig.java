@@ -33,7 +33,7 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         // Account and assigned mobility APIs require JWT; API documentation stays public.
         http.securityMatcher("/api/v1/auth/**", "/api/v1/elder-profiles/**",
-                "/api/v1/guardian-links/**", "/api/v1/notifications/**",
+                "/api/v1/guardian-links/**", "/api/v1/guardian-profiles/**", "/api/v1/notifications/**",
                 "/api/v1/places/**", "/api/v1/route-plans/**", "/api/v1/trips/**",
                 "/api/v1/guardian/**", "/api/v1/appointments/**",
                 "/api/v1/appointment-extractions/**", "/api/v1/weather-risk/**",

@@ -111,7 +111,7 @@ public class PhoneAuthService {
 
         String sessionId = UUID.randomUUID().toString();
         Jwt jwt = issueAccessToken(phoneHash, now, sessionId);
-        AccountService.User user = accounts.login(jwt, role);
+        AccountService.User user = accounts.login(jwt, role, phone);
         db.update("UPDATE phone_verifications SET consumed_at = ? WHERE phone_hash = ?",
                 Timestamp.from(now), phoneHash);
         String refreshToken = newRefreshToken();
