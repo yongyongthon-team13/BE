@@ -37,6 +37,7 @@ public final class TripDtos {
                              Instant plannedDepartureAt, Instant plannedArrivalAt,
                              Instant estimatedArrivalAt, Instant startedAt, Instant endedAt,
                              Instant lastLocationAt,
+                             Double lastLatitude, Double lastLongitude,
                              @Schema(description = "최근 이동 이벤트. 종료 원인을 구분할 때 사용합니다.",
                                      allowableValues = {"DEPARTED", "BOARDED", "ALIGHTED", "ARRIVED", "HELP_REQUESTED", "CANCELLED", "ABORTED", "CHECK_IN_RESPONDED"})
                              String lastEventType) {}

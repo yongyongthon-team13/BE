@@ -11,13 +11,15 @@ import java.time.Instant;
 
 public final class TransportRequestDtos {
     private TransportRequestDtos() {}
-    public enum Type { TAXI, CAREGIVER_PICKUP, ACCESSIBLE_TRANSPORT }
+    public enum Type { TAXI, CAREGIVER_PICKUP, ACCESSIBLE_TRANSPORT, GUARDIAN_ASSISTANCE }
+    public enum GuardianResponse { PICKUP_BY_GUARDIAN, CALL_TAXI }
     public record PickupLocation(@NotBlank @Size(max = 255) String name,
                                  @NotNull @DecimalMin("-90") @DecimalMax("90") BigDecimal latitude,
                                  @NotNull @DecimalMin("-180") @DecimalMax("180") BigDecimal longitude) {}
     public record CreateRequest(@NotNull Type type, @Valid PickupLocation pickupLocation,
                                 @Size(max = 500) String note) {}
-    public record TransportRequest(String requestId, Type type, String status,
+    public record RespondRequest(@NotNull GuardianResponse response) {}
+    public record TransportRequest(String requestId, Type type, String status, GuardianResponse guardianResponse,
                                    Instant requestedAt, Instant updatedAt,
                                    String statusDescription) {}
 }

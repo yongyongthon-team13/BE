@@ -3,6 +3,7 @@ package com.yongyong.backend.transport;
 import com.yongyong.backend.api.ApiEnvelope;
 import com.yongyong.backend.transport.TransportRequestDtos.CreateRequest;
 import com.yongyong.backend.transport.TransportRequestDtos.TransportRequest;
+import com.yongyong.backend.transport.TransportRequestDtos.RespondRequest;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -37,5 +38,18 @@ public class TransportRequestController {
     public ApiEnvelope<List<TransportRequest>> list(@AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID appointmentId) {
         return ApiEnvelope.success(requests.list(jwt, appointmentId));
+    }
+
+    @GetMapping("/{requestId}")
+    public ApiEnvelope<TransportRequest> get(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID appointmentId, @PathVariable UUID requestId) {
+        return ApiEnvelope.success(requests.get(jwt, appointmentId, requestId));
+    }
+
+    @PostMapping("/{requestId}/response")
+    public ApiEnvelope<TransportRequest> respond(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID appointmentId, @PathVariable UUID requestId,
+            @Valid @RequestBody RespondRequest request) {
+        return ApiEnvelope.success(requests.respond(jwt, appointmentId, requestId, request));
     }
 }

@@ -82,6 +82,40 @@ class TransportRequestApiTest {
                 .andExpect(jsonPath("$.data[0].requestId").value(requestId));
     }
 
+    @Test
+    void elderCanRequestGuardianAssistanceAndLinkedGuardianCanAnswerOnce() throws Exception {
+        Jwt elder = token("assistance-elder");
+        accounts.login(elder, "ELDER");
+        String elderId = accounts.createProfile(elder, "요청 어르신", 1948, null, null).elderId();
+        accounts.recordConsent(elder, elderId, "CAREGIVER_SHARING", "v1", true);
+        Jwt guardian = token("assistance-guardian");
+        var guardianUser = accounts.login(guardian, "GUARDIAN");
+        db.update("INSERT INTO guardian_links(link_id, elder_id, guardian_user_id, relationship, status, linked_at) VALUES (?, ?, ?, '자녀', 'ACTIVE', CURRENT_TIMESTAMP)",
+                UUID.randomUUID().toString(), elderId, guardianUser.userId());
+        String appointmentId = UUID.randomUUID().toString();
+        insertAppointment(appointmentId, elderId);
+
+        String created = mvc.perform(post("/api/v1/appointments/{id}/transport-requests", appointmentId)
+                        .with(jwt().jwt(elder)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\":\"GUARDIAN_ASSISTANCE\"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.data.status").value("PENDING"))
+                .andExpect(jsonPath("$.data.statusDescription").value("보호자 응답 대기 중입니다."))
+                .andReturn().getResponse().getContentAsString();
+        String requestId = JsonPath.read(created, "$.data.requestId");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM push_outbox WHERE recipient_user_id = ? AND notification_type = 'GUARDIAN_ASSISTANCE_REQUEST'",
+                Integer.class, guardianUser.userId())).isEqualTo(1);
+
+        mvc.perform(post("/api/v1/appointments/{appointmentId}/transport-requests/{requestId}/response", appointmentId, requestId)
+                        .with(jwt().jwt(guardian)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"response\":\"PICKUP_BY_GUARDIAN\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.data.guardianResponse").value("PICKUP_BY_GUARDIAN"));
+        mvc.perform(post("/api/v1/appointments/{appointmentId}/transport-requests/{requestId}/response", appointmentId, requestId)
+                        .with(jwt().jwt(guardian)).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"response\":\"CALL_TAXI\"}"))
+                .andExpect(status().isConflict());
+    }
+
     private static Jwt token(String subject) {
         return Jwt.withTokenValue("token").header("alg", "HS256")
                 .issuer("https://auth.yongyongthon.example/phone").subject(subject)
