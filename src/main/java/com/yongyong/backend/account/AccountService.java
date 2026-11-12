@@ -123,12 +123,16 @@ public class AccountService {
     }
 
     public Profile ownProfile(Jwt jwt) {
+        return profile(jwt, ownElderId(jwt));
+    }
+
+    public String ownElderId(Jwt jwt) {
         User user = current(jwt);
         requireRole(user, "ELDER");
         List<String> elderIds = db.query("SELECT elder_id FROM elder_profiles WHERE user_id = ?",
                 (rs, n) -> rs.getString(1), user.userId());
         if (elderIds.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found");
-        return profile(jwt, elderIds.get(0));
+        return elderIds.get(0);
     }
 
     public List<LinkedGuardian> ownGuardians(Jwt jwt) {
@@ -187,8 +191,10 @@ public class AccountService {
                 cipher.encrypt(name), elderId);
         if (birthYear != null) db.update("UPDATE elder_profiles SET birth_year = ?, updated_at = CURRENT_TIMESTAMP(6) WHERE elder_id = ?",
                 birthYear, elderId);
-        if (homeAddress != null) db.update("UPDATE elder_profiles SET home_address_enc = ?, updated_at = CURRENT_TIMESTAMP(6) WHERE elder_id = ?",
-                cipher.encrypt(homeAddress), elderId);
+        if (homeAddress != null) db.update("""
+                UPDATE elder_profiles SET home_address_enc = ?, home_lat_enc = NULL, home_lon_enc = NULL,
+                  home_location_verified_at = NULL, updated_at = CURRENT_TIMESTAMP(6) WHERE elder_id = ?
+                """, cipher.encrypt(homeAddress), elderId);
         updateMobility(elderId, mobility);
         return profile(jwt, elderId);
     }

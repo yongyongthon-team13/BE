@@ -69,7 +69,9 @@ public class TripService {
         User user = accounts.current(jwt);
         List<TripStatus> rows = db.query("""
                 SELECT t.trip_id, t.route_plan_id, t.status, t.planned_departure_at, t.planned_arrival_at,
-                  t.estimated_arrival_at, t.started_at, t.ended_at, l.recorded_at
+                  t.estimated_arrival_at, t.started_at, t.ended_at, l.recorded_at,
+                  (SELECT ev.event_type FROM trip_events ev WHERE ev.trip_id = t.trip_id
+                   ORDER BY ev.occurred_at DESC, ev.event_id DESC LIMIT 1)
                 FROM trips t JOIN elder_profiles e ON e.elder_id = t.elder_id
                 LEFT JOIN trip_current_locations l ON l.trip_id = t.trip_id
                 WHERE t.trip_id = ? AND (e.user_id = ? OR EXISTS (
@@ -77,7 +79,8 @@ public class TripService {
                     AND gl.guardian_user_id = ? AND gl.status = 'ACTIVE'))
                 """, (rs, n) -> new TripStatus(rs.getString(1), rs.getString(2), rs.getString(3),
                 instant(rs.getTimestamp(4)), instant(rs.getTimestamp(5)), instant(rs.getTimestamp(6)),
-                instant(rs.getTimestamp(7)), instant(rs.getTimestamp(8)), instant(rs.getTimestamp(9))),
+                instant(rs.getTimestamp(7)), instant(rs.getTimestamp(8)), instant(rs.getTimestamp(9)),
+                rs.getString(10)),
                 tripId, user.userId(), user.userId());
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trip not found");
         if ("GUARDIAN".equals(user.role()) && (!consented(elderIdForTrip(tripId), "CAREGIVER_SHARING")
@@ -178,6 +181,10 @@ public class TripService {
 
     @Transactional
     public ContactActionResult contactAction(Jwt jwt, String elderId, String tripId, ContactActionRequest request) {
+        if (!List.of("CALL", "MESSAGE", "EMERGENCY_CALL").contains(request.actionType())
+                || (request.outcome() != null && !List.of("CONNECTED", "NO_ANSWER", "FAILED", "OTHER")
+                .contains(request.outcome())))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid contact action value");
         User guardian = accounts.current(jwt);
         if (!"GUARDIAN".equals(guardian.role()) || !activeGuardian(guardian.userId(), elderId))
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trip not found");
@@ -186,10 +193,11 @@ public class TripService {
         if (tripIds.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trip not found");
         Instant now = Instant.now();
         String actionId = id();
+        String actionType = request.actionType();
         String outcome = request.outcome();
         db.update("INSERT INTO guardian_contact_actions(contact_action_id, trip_id, guardian_user_id, action_type, outcome, occurred_at) VALUES (?, ?, ?, ?, ?, ?)",
-                actionId, tripId, guardian.userId(), request.actionType(), outcome, ts(now));
-        return new ContactActionResult(actionId, tripId, request.actionType(), outcome, now);
+                actionId, tripId, guardian.userId(), actionType, outcome, ts(now));
+        return new ContactActionResult(actionId, tripId, actionType, outcome, now);
     }
 
     @Transactional

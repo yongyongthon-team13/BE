@@ -1,13 +1,16 @@
 package com.yongyong.backend.account;
 
-import java.util.List;
+import java.util.Arrays;
 import java.util.Base64;
+import java.util.List;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
@@ -21,6 +24,9 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 public class SecurityConfig {
@@ -28,6 +34,22 @@ public class SecurityConfig {
     static final String AUDIENCE = "yongyongthon-api";
     @Value("${app.auth.jwt-secret:}") private String encodedSecret;
     @Value("${app.data-key:}") private String encodedDataKey;
+    @Value("${app.cors.allowed-origins:http://localhost:8081,https://yongyongthon-team13.expo.app}")
+    private String allowedOrigins;
+
+    @Bean
+    CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim).filter(origin -> !origin.isEmpty()).distinct().toList());
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE));
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -41,9 +63,11 @@ public class SecurityConfig {
                 "/swagger-ui/**", "/swagger-ui.html",
                 "/v3/api-docs/**");
         http.csrf(csrf -> csrf.disable());
+        http.cors(cors -> {});
         if (configured()) {
             http.authorizeHttpRequests(auth -> auth
                     .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     .requestMatchers("/api/v1/auth/phone-verifications", "/api/v1/auth/login",
                             "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
                     .anyRequest().authenticated());
@@ -52,6 +76,7 @@ public class SecurityConfig {
             // No signing key: account data stays closed without blocking other modules.
             http.authorizeHttpRequests(auth -> auth
                     .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     .anyRequest().denyAll());
         }
         return http.build();

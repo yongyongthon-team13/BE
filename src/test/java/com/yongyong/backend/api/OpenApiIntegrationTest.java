@@ -27,7 +27,7 @@ class OpenApiIntegrationTest {
                 .andExpect(jsonPath("$.paths['/api/v1/route-plans/search'].post").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/places'].get.security[0].bearerAuth").exists())
                 .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
-                .andExpect(jsonPath("$.paths['/api/v1/auth/login']").doesNotExist())
+                .andExpect(jsonPath("$.paths['/api/v1/auth/login'].post").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/appointments/{appointmentId}/transport-requests'].post").exists());
     }
 }
