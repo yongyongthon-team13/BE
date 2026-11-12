@@ -112,6 +112,7 @@ class CompanionGuardianApiTest {
     void 보호자는_연결된_어르신의_다가오는_일정만_본다() throws Exception {
         Jwt user = token("guardian-elder");
         String elderId = elder(user, null);
+        accounts.login(user, "ELDER", "+821012345678");
         appointment(user, elderId, "2020-01-01T10:00:00+09:00");
         String upcoming = appointment(user, elderId, "2030-01-01T10:00:00+09:00");
         Jwt guardian = linkedGuardian(user, elderId, "guardian-linked");
@@ -121,7 +122,8 @@ class CompanionGuardianApiTest {
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].elderId").value(elderId))
                 .andExpect(jsonPath("$[0].name").value("김순자"))
-                .andExpect(jsonPath("$[0].relationship").value("자녀"));
+                .andExpect(jsonPath("$[0].relationship").value("자녀"))
+                .andExpect(jsonPath("$[0].phoneNumber").value("+821012345678"));
         mockMvc.perform(get(GUARDIAN + "/" + elderId + "/appointments").with(jwt().jwt(guardian)))
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].appointmentId").value(upcoming));
