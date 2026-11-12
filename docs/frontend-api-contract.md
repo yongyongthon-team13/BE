@@ -73,9 +73,39 @@ Client-submitted event types for `POST /api/v1/trips/{tripId}/events`:
 
 Current trip lifecycle status values are `ACTIVE`, `HELP_REQUESTED`, `ARRIVED`, and `CLOSED`. `CANCELLED` and `ABORTED` both end in `CLOSED`; `GET /api/v1/trips/{tripId}` now also returns `lastEventType` so clients can distinguish the terminal cause. Delay is reported separately as a boolean by the location update response, not as a lifecycle status.
 
+`GET /api/v1/guardian/elder-profiles/{elderId}/active-trip` also returns `lastLatitude` and `lastLongitude` for the latest location update. Both are `null` when there is no current location or its two-minute freshness period has expired. The shared trip status response exposes these fields to the elder's own trip lookup as well.
+
 `POST /api/v1/guardian/elder-profiles/{elderId}/trips/{tripId}/contact-actions` accepts:
 
 - `actionType`: `CALL`, `MESSAGE`, or `EMERGENCY_CALL`
 - optional `outcome`: `CONNECTED`, `NO_ANSWER`, `FAILED`, or `OTHER`
 
 This endpoint records an action; it does not place a call or send a message. `occurredAt` is deprecated and ignored. The server records its receipt time.
+
+## Guardian push notifications
+
+The mobile app uses Expo Notifications. A signed-in guardian registers the current Expo push token with `POST /api/v1/push-tokens`:
+
+```json
+{"token":"ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]","platform":"IOS"}
+```
+
+`platform` is `IOS` or `ANDROID`. The API stores the token encrypted and returns `{ "registered": true }`; token values are never returned. Register again when Expo issues a replacement token. The app must be a development or production build with Expo/APNs/FCM push credentials configured; Expo Go cannot receive remote push notifications.
+
+Call `DELETE /api/v1/push-tokens` with `{"token":"ExponentPushToken[...]"}` when signing out or unregistering this device. It returns `{ "registered": false }` and deactivates only the current guardian's matching token.
+
+Delay notifications are queued when a location update estimates arrival more than 10 minutes later than the planned arrival, and that condition remains for 5 minutes. The rule is evaluated when location updates arrive; an `OK` check-in clears the current delay timer. A separate no-response alert is queued when the planned arrival time has passed by 5 minutes, the latest location is still fresh (within 2 minutes) and more than 1.2 km from the destination, and there has been no `CHECK_IN_RESPONDED` event since the planned arrival time. The server checks this condition every minute and sends at most one such alert per trip. Caregiver-sharing consent and an active guardian link are required. The in-app notification type is `NO_RESPONSE`; the Expo push data contains `type: TRIP_NO_RESPONSE` and `tripId`. A guardian assistance request also queues a push for each currently linked guardian when caregiver-sharing consent is active. Push delivery is asynchronous; the in-app notification/request APIs remain the source of truth. An outbox status of `SENT` means Expo accepted at least one ticket; it does not confirm device receipt. The backend checks Expo receipts after 15 minutes and deactivates tokens that Expo reports as `DeviceNotRegistered`; this still cannot confirm that a person saw the notification.
+
+## Guardian assistance transport requests
+
+An elder creates a request tied to an appointment with `POST /api/v1/appointments/{appointmentId}/transport-requests`, using type `GUARDIAN_ASSISTANCE`. Caregiver-sharing consent and at least one active guardian link are required. The request begins with `status: PENDING`; linked guardians read it with the appointment's existing `GET` endpoint. The frontend's `pickup`/`taxi` choices map to `PICKUP_BY_GUARDIAN`/`CALL_TAXI`. The API response includes `requestId`, `type`, `status`, `guardianResponse`, `requestedAt`, `updatedAt`, and `statusDescription`.
+
+To read one request by ID, use `GET /api/v1/appointments/{appointmentId}/transport-requests/{requestId}`. The appointment ID and request ID must refer to the same record.
+
+A linked guardian answers with `POST /api/v1/appointments/{appointmentId}/transport-requests/{requestId}/response`:
+
+```json
+{"response":"PICKUP_BY_GUARDIAN"}
+```
+
+The response can be `PICKUP_BY_GUARDIAN` or `CALL_TAXI`. A successful answer sets `status: ACCEPTED` and returns the selected `guardianResponse`. Only the first response is accepted. These values record the agreed plan; they do not book a taxi or dispatch a vehicle.

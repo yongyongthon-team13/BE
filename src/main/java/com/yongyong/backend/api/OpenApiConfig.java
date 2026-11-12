@@ -26,7 +26,7 @@ public class OpenApiConfig {
                         "/api/v1/department-recommendations/**", "/api/v1/clinics/**",
                         "/api/v1/auth/**", "/api/v1/elder-profiles/**",
                         "/api/v1/guardian-links/**", "/api/v1/guardian-profiles/**",
-                        "/api/v1/notifications/**")
+                        "/api/v1/notifications/**", "/api/v1/push-tokens/**")
                 .build();
     }
 }

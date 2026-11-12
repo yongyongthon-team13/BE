@@ -3,6 +3,7 @@ package com.yongyong.backend.trip;
 import com.yongyong.backend.account.AccountService;
 import com.yongyong.backend.account.AccountService.User;
 import com.yongyong.backend.trip.TripDtos.*;
+import com.yongyong.backend.push.PushOutboxService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -19,18 +20,23 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class TripService {
     private static final Duration LOCATION_TTL = Duration.ofMinutes(2);
+    private static final double NO_RESPONSE_DISTANCE_METERS = 1_200;
     private final Duration delayThreshold;
     private final Duration delayDwell;
+    private final Duration noResponseGrace;
     private final JdbcTemplate db;
     private final AccountService accounts;
     private final ObjectMapper mapper;
+    private final PushOutboxService pushOutbox;
 
-    public TripService(JdbcTemplate db, AccountService accounts, ObjectMapper mapper,
+    public TripService(JdbcTemplate db, AccountService accounts, ObjectMapper mapper, PushOutboxService pushOutbox,
                        @Value("${app.trips.delay-threshold-minutes:10}") long delayThresholdMinutes,
-                       @Value("${app.trips.delay-dwell-minutes:5}") long delayDwellMinutes) {
-        this.db = db; this.accounts = accounts; this.mapper = mapper;
+                       @Value("${app.trips.delay-dwell-minutes:5}") long delayDwellMinutes,
+                       @Value("${app.trips.no-response-grace-minutes:5}") long noResponseGraceMinutes) {
+        this.db = db; this.accounts = accounts; this.mapper = mapper; this.pushOutbox = pushOutbox;
         this.delayThreshold = Duration.ofMinutes(Math.max(1, delayThresholdMinutes));
         this.delayDwell = Duration.ofMinutes(Math.max(1, delayDwellMinutes));
+        this.noResponseGrace = Duration.ofMinutes(Math.max(1, noResponseGraceMinutes));
     }
 
     @Transactional
@@ -70,6 +76,8 @@ public class TripService {
         List<TripStatus> rows = db.query("""
                 SELECT t.trip_id, t.route_plan_id, t.status, t.planned_departure_at, t.planned_arrival_at,
                   t.estimated_arrival_at, t.started_at, t.ended_at, l.recorded_at,
+                  CASE WHEN l.expires_at > CURRENT_TIMESTAMP(6) THEN l.latitude END,
+                  CASE WHEN l.expires_at > CURRENT_TIMESTAMP(6) THEN l.longitude END,
                   (SELECT ev.event_type FROM trip_events ev WHERE ev.trip_id = t.trip_id
                    ORDER BY ev.occurred_at DESC, ev.event_id DESC LIMIT 1)
                 FROM trips t JOIN elder_profiles e ON e.elder_id = t.elder_id
@@ -80,7 +88,7 @@ public class TripService {
                 """, (rs, n) -> new TripStatus(rs.getString(1), rs.getString(2), rs.getString(3),
                 instant(rs.getTimestamp(4)), instant(rs.getTimestamp(5)), instant(rs.getTimestamp(6)),
                 instant(rs.getTimestamp(7)), instant(rs.getTimestamp(8)), instant(rs.getTimestamp(9)),
-                rs.getString(10)),
+                (Double) rs.getObject(10), (Double) rs.getObject(11), rs.getString(12)),
                 tripId, user.userId(), user.userId());
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trip not found");
         if ("GUARDIAN".equals(user.role()) && (!consented(elderIdForTrip(tripId), "CAREGIVER_SHARING")
@@ -205,6 +213,55 @@ public class TripService {
         return db.update("DELETE FROM trip_current_locations WHERE expires_at <= CURRENT_TIMESTAMP(6)");
     }
 
+    @Transactional
+    public int checkNoResponseAlerts() {
+        Instant now = Instant.now();
+        Instant graceCutoff = now.minus(noResponseGrace);
+        List<NoResponseCandidate> candidates = db.query("""
+                SELECT t.trip_id, t.elder_id, t.planned_arrival_at, l.latitude, l.longitude,
+                  r.destination_lat, r.destination_lon
+                FROM trips t
+                JOIN route_plans r ON r.route_plan_id = t.route_plan_id
+                JOIN trip_current_locations l ON l.trip_id = t.trip_id
+                WHERE t.status = 'ACTIVE' AND t.no_response_notified_at IS NULL
+                  AND t.planned_arrival_at <= ? AND l.expires_at > ?
+                  AND NOT EXISTS (
+                    SELECT 1 FROM trip_events ev WHERE ev.trip_id = t.trip_id
+                      AND ev.event_type = 'CHECK_IN_RESPONDED'
+                      AND ev.occurred_at >= t.planned_arrival_at
+                  )
+                ORDER BY t.planned_arrival_at
+                """, (rs, n) -> new NoResponseCandidate(rs.getString(1), rs.getString(2),
+                rs.getDouble(4), rs.getDouble(5), rs.getDouble(6), rs.getDouble(7)),
+                ts(graceCutoff), ts(now));
+
+        int notified = 0;
+        for (NoResponseCandidate candidate : candidates) {
+            double distance = haversineMeters(candidate.latitude(), candidate.longitude(),
+                    candidate.destinationLat(), candidate.destinationLon());
+            if (distance <= NO_RESPONSE_DISTANCE_METERS || !consented(candidate.elderId(), "CAREGIVER_SHARING"))
+                continue;
+            List<String> guardians = db.query("SELECT guardian_user_id FROM guardian_links WHERE elder_id = ? AND status = 'ACTIVE'",
+                    (rs, n) -> rs.getString(1), candidate.elderId());
+            if (guardians.isEmpty()) continue;
+
+            int claimed = db.update("UPDATE trips SET no_response_notified_at = ? WHERE trip_id = ? AND no_response_notified_at IS NULL",
+                    ts(now), candidate.tripId());
+            if (claimed == 0) continue;
+            for (String guardianId : guardians) {
+                db.update("""
+                        INSERT INTO notifications(notification_id, trip_id, recipient_user_id, channel, type, status, sent_at)
+                        VALUES (?, ?, ?, 'APP', 'NO_RESPONSE', 'QUEUED', NULL)
+                        """, id(), candidate.tripId(), guardianId);
+                pushOutbox.enqueue(guardianId, "TRIP_NO_RESPONSE", "어르신 안부 확인이 필요합니다",
+                        "예정 도착 시간이 지났고 병원에서 1.2km 이상 떨어져 있습니다.",
+                        "{\"type\":\"TRIP_NO_RESPONSE\",\"tripId\":\"" + candidate.tripId() + "\"}");
+            }
+            notified++;
+        }
+        return notified;
+    }
+
     private void createGuardianDelayNotifications(String tripId, String elderId) {
         if (!consented(elderId, "CAREGIVER_SHARING")) return;
         List<String> already = db.query("SELECT notification_id FROM notifications WHERE trip_id = ? AND type = 'DELAY'",
@@ -212,10 +269,14 @@ public class TripService {
         if (!already.isEmpty()) return;
         List<String> guardians = db.query("SELECT guardian_user_id FROM guardian_links WHERE elder_id = ? AND status = 'ACTIVE'",
                 (rs, n) -> rs.getString(1), elderId);
-        for (String guardianId : guardians) db.update("""
+        for (String guardianId : guardians) {
+            db.update("""
                 INSERT INTO notifications(notification_id, trip_id, recipient_user_id, channel, type, status, sent_at)
                 VALUES (?, ?, ?, 'APP', 'DELAY', 'QUEUED', NULL)
                 """, id(), tripId, guardianId);
+            pushOutbox.enqueue(guardianId, "TRIP_DELAY", "이동 지연 안내", "어르신의 도착이 예정 시간보다 늦어지고 있습니다.",
+                    "{\"type\":\"TRIP_DELAY\",\"tripId\":\"" + tripId + "\"}");
+        }
     }
 
     private TripContext ownedActiveTrip(User user, String tripId) {
@@ -259,4 +320,6 @@ public class TripService {
     private static String id() { return UUID.randomUUID().toString(); }
     private record RouteInfo(int durationSeconds, String ownerId) {}
     private record TripContext(String elderId, Instant plannedArrival, double destinationLat, double destinationLon) {}
+    private record NoResponseCandidate(String tripId, String elderId, double latitude, double longitude,
+                                       double destinationLat, double destinationLon) {}
 }

@@ -81,6 +81,15 @@ class TripServiceTest {
         assertThat(firstLocation.delayed()).isTrue();
         trips.updateLocation(elder, started.tripId(), new LocationRequest(37.2501, 127.1601, 10, Instant.now().plusMillis(1)));
 
+        var activeTrip = trips.activeTripForGuardian(guardian, elderId);
+        assertThat(activeTrip.lastLatitude()).isEqualTo(37.2501);
+        assertThat(activeTrip.lastLongitude()).isEqualTo(127.1601);
+        db.update("UPDATE trip_current_locations SET expires_at = ? WHERE trip_id = ?",
+                java.sql.Timestamp.from(Instant.now().minusSeconds(1)), started.tripId());
+        var staleTrip = trips.activeTripForGuardian(guardian, elderId);
+        assertThat(staleTrip.lastLatitude()).isNull();
+        assertThat(staleTrip.lastLongitude()).isNull();
+
         assertThat(db.queryForObject("SELECT COUNT(*) FROM notifications WHERE trip_id = ? AND type = 'DELAY'",
                 Integer.class, started.tripId())).isEqualTo(1);
         assertThat(db.queryForObject("SELECT status FROM notifications WHERE trip_id = ? AND type = 'DELAY'",
