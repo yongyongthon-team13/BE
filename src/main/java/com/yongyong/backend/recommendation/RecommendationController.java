@@ -19,12 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class RecommendationController {
 
-    public record RecommendationRequest(@Size(max = 500) String text, @Size(max = 20) String bodyPart) {}
+    public record DepartmentRecommendationRequest(@Size(max = 500) String text, @Size(max = 20) String bodyPart) {}
 
     private final RecommendationService recommendationService;
 
     @PostMapping("/department-recommendations")
-    public Recommendation recommend(@Valid @RequestBody RecommendationRequest request) {
+    public Recommendation recommend(@Valid @RequestBody DepartmentRecommendationRequest request) {
         return recommendationService.recommend(request.text(), request.bodyPart());
     }
 
