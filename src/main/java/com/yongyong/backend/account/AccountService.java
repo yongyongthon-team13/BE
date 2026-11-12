@@ -65,19 +65,19 @@ public class AccountService {
         if (!existing.isEmpty()) {
             if (!existing.get(0).role().equals(role))
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "This phone number already has a different role");
-            saveVerifiedGuardianPhone(existing.get(0), verifiedPhoneNumber);
+            saveVerifiedPhone(existing.get(0), verifiedPhoneNumber);
             return existing.get(0);
         }
         String userId = id();
         db.update("INSERT INTO app_users(user_id, role) VALUES (?, ?)", userId, role);
         db.update("INSERT INTO user_identities(identity_id, user_id, issuer, subject) VALUES (?, ?, ?, ?)",
                 id(), userId, issuer, subject);
-        saveVerifiedGuardianPhone(new User(userId, role), verifiedPhoneNumber);
+        saveVerifiedPhone(new User(userId, role), verifiedPhoneNumber);
         return new User(userId, role);
     }
 
-    private void saveVerifiedGuardianPhone(User user, String verifiedPhoneNumber) {
-        if ("GUARDIAN".equals(user.role()) && verifiedPhoneNumber != null)
+    private void saveVerifiedPhone(User user, String verifiedPhoneNumber) {
+        if (verifiedPhoneNumber != null)
             db.update("UPDATE app_users SET phone_number_enc = ? WHERE user_id = ?",
                     cipher.encrypt(verifiedPhoneNumber), user.userId());
     }

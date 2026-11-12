@@ -1,6 +1,7 @@
 package com.yongyong.backend.guardian;
 
 import com.yongyong.backend.account.AccountService;
+import com.yongyong.backend.account.DataCipher;
 import com.yongyong.backend.appointment.Appointment;
 import com.yongyong.backend.appointment.AppointmentRepository;
 import com.yongyong.backend.appointment.AppointmentService;
@@ -22,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class GuardianAppointmentService {
 
-    public record ElderSummary(String elderId, String name, Integer birthYear, String relationship) {}
+    public record ElderSummary(String elderId, String name, Integer birthYear, String relationship, String phoneNumber) {}
 
     public record PendingTasks(List<AppointmentResponse> helpRequests, List<AppointmentResponse> visitReviews) {}
 
@@ -32,6 +33,7 @@ public class GuardianAppointmentService {
     private final AppointmentService appointmentService;
     private final AppointmentRepository appointmentRepository;
     private final JdbcTemplate db;
+    private final DataCipher cipher;
 
     @Transactional(readOnly = true)
     public List<ElderSummary> elders(Jwt jwt) {
@@ -43,7 +45,12 @@ public class GuardianAppointmentService {
         for (Link link : links) {
             try {
                 AccountService.Profile profile = accountService.profile(jwt, link.elderId());
-                elders.add(new ElderSummary(profile.elderId(), profile.name(), profile.birthYear(), link.relationship()));
+                // 어르신이 로그인할 때 인증한 번호, 그 전에 가입했으면 null
+                String phone = db.queryForObject("""
+                        SELECT u.phone_number_enc FROM elder_profiles e JOIN app_users u ON u.user_id = e.user_id
+                        WHERE e.elder_id = ?""", String.class, link.elderId());
+                elders.add(new ElderSummary(profile.elderId(), profile.name(), profile.birthYear(),
+                        link.relationship(), cipher.decrypt(phone)));
             } catch (ResponseStatusException e) {
                 // 어르신이 공유 동의를 철회하면 profile이 404를 던지니까 목록에서 뺀다
                 if (!HttpStatus.NOT_FOUND.equals(e.getStatusCode())) throw e;
