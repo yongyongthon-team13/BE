@@ -7,6 +7,7 @@ import com.yongyong.backend.appointment.dto.AppointmentUpdateRequest;
 import com.yongyong.backend.companion.CompanionRequest;
 import com.yongyong.backend.companion.CompanionRequestRepository;
 import com.yongyong.backend.route.RoutePlanService;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -35,6 +36,7 @@ public class AppointmentService {
         if (!complete && !Boolean.TRUE.equals(request.helpRequested())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "병원명과 시간이 필요합니다.");
         }
+        rejectPast(request.appointmentDate(), request.appointmentAt());
         return toResponse(appointmentRepository.save(new Appointment(request)));
     }
 
@@ -57,6 +59,7 @@ public class AppointmentService {
     @Transactional
     public AppointmentResponse update(Jwt jwt, UUID appointmentId, AppointmentUpdateRequest request) {
         Appointment appointment = findAccessible(jwt, appointmentId);
+        rejectPast(request.appointmentDate(), request.appointmentAt());
         appointment.update(request);
         return toResponse(appointment);
     }
@@ -94,5 +97,12 @@ public class AppointmentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "일정을 찾을 수 없습니다."));
         accountService.profile(jwt, appointment.getElderId().toString());
         return appointment;
+    }
+
+    // 지난 일정은 저장하지 않는다
+    private static void rejectPast(LocalDate date, OffsetDateTime at) {
+        OffsetDateTime now = OffsetDateTime.now(Appointment.KOREA);
+        boolean past = at != null ? at.isBefore(now) : date != null && date.isBefore(now.toLocalDate());
+        if (past) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "지난 날짜와 시간은 일정으로 넣을 수 없습니다.");
     }
 }
