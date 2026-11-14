@@ -11,9 +11,12 @@ import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.SecretKey;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -37,15 +40,24 @@ public class PhoneAuthService {
     private final JwtEncoder encoder;
     private final SecretKey key;
     private final SecureRandom random = new SecureRandom();
+    private final Set<String> demoPhones;
+    private final String demoCode;
 
     public PhoneAuthService(JdbcTemplate db, AccountService accounts, SmsSender sms,
-                            JwtEncoder encoder, SecurityConfig security) {
+                            JwtEncoder encoder, SecurityConfig security,
+                            @Value("${app.auth.demo-phones:}") List<String> demoPhones,
+                            @Value("${app.auth.demo-code:}") String demoCode) {
         this.db = db;
         this.accounts = accounts;
         this.sms = sms;
         this.encoder = encoder;
         // Team app can start before deployment secrets are configured; account APIs stay closed.
         this.key = security.configured() ? security.secretKey() : null;
+        // 시연·테스트용 번호는 문자 없이 고정 인증번호로 로그인한다. 환경변수가 없으면 꺼져 있다
+        boolean demoOn = demoCode.matches("[0-9]{6}");
+        this.demoPhones = demoOn ? demoPhones.stream().filter(p -> !p.isBlank())
+                .map(PhoneAuthService::normalize).collect(Collectors.toSet()) : Set.of();
+        this.demoCode = demoCode;
     }
 
     public record LoginResult(String accessToken, String tokenType, Instant expiresAt,
@@ -60,7 +72,8 @@ public class PhoneAuthService {
     public void requestCode(String input) {
         requireConfigured();
         String phone = normalize(input);
-        if (!sms.available())
+        boolean demo = demoPhones.contains(phone);
+        if (!demo && !sms.available())
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "SMS provider is not configured");
         String phoneHash = digest("phone:" + phone);
         Instant now = Instant.now();
@@ -69,13 +82,14 @@ public class PhoneAuthService {
         int dailyCount = 1;
         if (!existing.isEmpty()) {
             Challenge previous = existing.get(0);
-            if (previous.sentAt().plusSeconds(60).isAfter(now))
+            // 테스트 계정은 여러 명이 같이 써서 요청 제한을 걸지 않는다
+            if (!demo && previous.sentAt().plusSeconds(60).isAfter(now))
                 throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Wait before requesting another code");
             dailyCount = previous.sentDay().equals(today) ? previous.dailyCount() + 1 : 1;
-            if (dailyCount > 10)
+            if (!demo && dailyCount > 10)
                 throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Daily code limit reached");
         }
-        String code = "%06d".formatted(random.nextInt(1_000_000));
+        String code = demo ? demoCode : "%06d".formatted(random.nextInt(1_000_000));
         String codeHash = digest("code:" + phone + ":" + code);
         if (existing.isEmpty()) {
             db.update("INSERT INTO phone_verifications(phone_hash, code_hash, expires_at, sent_at, sent_day, daily_count) " +
@@ -89,7 +103,7 @@ public class PhoneAuthService {
                     java.sql.Date.valueOf(today), dailyCount, phoneHash);
         }
         // The code is sent only to the verified phone; it is never logged or returned by HTTP.
-        sms.send(phone, "[용용톤] 인증번호 " + code + " (5분 유효)");
+        if (!demo) sms.send(phone, "[용용톤] 인증번호 " + code + " (5분 유효)");
     }
 
     @Transactional(noRollbackFor = ResponseStatusException.class)
