@@ -54,6 +54,7 @@ class AccountServiceTest {
 
         accounts.recordConsent(elder, elderId, "CAREGIVER_SHARING", "v1", true);
         String code = accounts.issueLinkCode(elder, elderId).code();
+        assertThat(code).matches("\\d{6}");
         String linkId = accounts.connectGuardian(guardian, code, "자녀").linkId();
         assertThat(accounts.profile(guardian, elderId).homeAddress()).isEqualTo("용인시");
         assertThatThrownBy(() -> accounts.connectGuardian(guardian, code, "자녀"))

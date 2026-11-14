@@ -6,7 +6,6 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
@@ -261,11 +260,15 @@ public class AccountService {
         requireOwner(current(jwt), elderId);
         if (!consented(elderId, "CAREGIVER_SHARING"))
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Caregiver sharing consent is required");
-        byte[] bytes = new byte[18];
-        random.nextBytes(bytes);
-        String code = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         Instant expiresAt = Instant.now().plus(10, ChronoUnit.MINUTES);
         db.update("UPDATE guardian_link_codes SET consumed_at = CURRENT_TIMESTAMP(6) WHERE elder_id = ? AND consumed_at IS NULL", elderId);
+        // 어르신이 불러주기 쉽게 6자리 숫자. 다 쓴 코드는 같은 번호가 다시 나올 수 있어서 지우고, 아직 살아있는 번호면 다시 뽑는다
+        String code;
+        do {
+            code = "%06d".formatted(random.nextInt(1_000_000));
+            db.update("DELETE FROM guardian_link_codes WHERE code_hash = ? AND (consumed_at IS NOT NULL OR expires_at <= CURRENT_TIMESTAMP(6))",
+                    sha256(code));
+        } while (db.queryForObject("SELECT COUNT(*) FROM guardian_link_codes WHERE code_hash = ?", Integer.class, sha256(code)) > 0);
         db.update("INSERT INTO guardian_link_codes(code_id, elder_id, code_hash, expires_at) VALUES (?, ?, ?, ?)",
                 id(), elderId, sha256(code), java.sql.Timestamp.from(expiresAt));
         return new LinkCode(code, expiresAt);
