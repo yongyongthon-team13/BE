@@ -3,6 +3,7 @@ package com.yongyong.backend.companion;
 import com.yongyong.backend.account.AccountService;
 import com.yongyong.backend.appointment.Appointment;
 import com.yongyong.backend.appointment.AppointmentService;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -11,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
@@ -30,7 +32,6 @@ public class CompanionService {
 
     // 실제 업체와 연동되지 않은 시연용 고정값
     private static final String SERVICE_NAME = "고령 어르신 동행 서비스";
-    private static final String SERVICE_PHONE = "0000-0000";
     private static final int ESTIMATED_COST_WON = 20000;
     private static final int PICKUP_MINUTES_BEFORE = 90;
     private static final String PICKUP_PLACE = "집 앞";
@@ -57,6 +58,10 @@ public class CompanionService {
     private final CompanionAssessmentRepository assessmentRepository;
     private final CompanionRequestRepository requestRepository;
 
+    // 업체 번호가 정해지면 서버 환경변수만 바꾸면 된다
+    @Value("${app.companion.service-phone}")
+    private String servicePhone;
+
     @Transactional
     public AssessmentResponse assess(Jwt jwt, UUID appointmentId) {
         Appointment appointment = appointmentService.findAccessible(jwt, appointmentId);
@@ -76,6 +81,10 @@ public class CompanionService {
         Appointment appointment = appointmentService.findAccessible(jwt, appointmentId);
         if (appointment.getStatus() != Appointment.Status.CONFIRMED || appointment.getAppointmentAt() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "확정된 일정만 신청할 수 있습니다.");
+        }
+        // 오늘부터 7일 안 일정은 동행 신청을 받지 않는다
+        if (!appointment.getAppointmentDate().isAfter(LocalDate.now(Appointment.KOREA).plusDays(7))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "동행서비스는 진료일 8일 전까지 신청할 수 있습니다.");
         }
         if (requestRepository.existsByAppointmentIdAndStatusIn(appointmentId, ACTIVE_STATUSES)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 진행 중인 동행서비스 신청이 있습니다.");
@@ -125,7 +134,7 @@ public class CompanionService {
         AccountService.Profile profile = accountService.profile(jwt, appointment.getElderId().toString());
         return new RequestResponse(request.getId(), appointment.getId(), profile.name(), profile.homeAddress(),
                 needsVehicle(profile.mobility()), request.getProviderCode(), request.getBookingMethod(),
-                request.getStatus(), SERVICE_NAME, SERVICE_PHONE, ESTIMATED_COST_WON,
+                request.getStatus(), SERVICE_NAME, servicePhone, ESTIMATED_COST_WON,
                 reasonText(profile.mobility(), appointment),
                 callScript(appointment, profile), request.getPickupAt(), request.getPickupPlace(),
                 request.getManagerName(), true, request.getRequestedAt());

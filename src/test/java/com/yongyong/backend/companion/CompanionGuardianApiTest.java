@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.jayway.jsonpath.JsonPath;
 import com.yongyong.backend.account.AccountService;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,6 +37,12 @@ class CompanionGuardianApiTest {
     @Autowired
     private AccountService accounts;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate db;
+
+    @Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
     private static Jwt token(String subject) {
         return Jwt.withTokenValue(subject).header("alg", "HS256")
                 .issuer("https://id.example.test").subject(subject)
@@ -55,6 +62,15 @@ class CompanionGuardianApiTest {
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString(), "$.appointmentId");
+    }
+
+    // 지난 일정은 API로 못 넣어서 DB에서 날짜를 돌린다
+    private String pastAppointment(Jwt user, String elderId) throws Exception {
+        String id = appointment(user, elderId, "2030-01-01T10:00:00+09:00");
+        entityManager.flush();
+        db.update("UPDATE appointments SET appointment_at = TIMESTAMP '2020-01-01 01:00:00' WHERE appointment_id = ?", id);
+        entityManager.clear();
+        return id;
     }
 
     private Jwt linkedGuardian(Jwt elder, String elderId, String subject) {
@@ -92,6 +108,22 @@ class CompanionGuardianApiTest {
     }
 
     @Test
+    void 일주일_안_일정은_동행_신청_불가_지난_일정은_등록_불가() throws Exception {
+        Jwt user = token("companion-soon");
+        String elderId = elder(user, null);
+        String soon = appointment(user, elderId, OffsetDateTime.now().plusDays(7).toString());
+        request(user, soon).andExpect(status().isConflict());
+        request(user, appointment(user, elderId, OffsetDateTime.now().plusDays(9).toString()))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post(APPOINTMENTS).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"elderId":"%s","clinicName":"OO병원","appointmentAt":"2020-01-01T10:00:00+09:00","source":"MANUAL"}"""
+                                .formatted(elderId)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void 동행_신청은_중복_불가_남의_일정은_404() throws Exception {
         Jwt user = token("companion-request");
         String appointmentId = appointment(user, elder(user, null), "2030-01-01T10:00:00+09:00");
@@ -113,7 +145,7 @@ class CompanionGuardianApiTest {
         Jwt user = token("guardian-elder");
         String elderId = elder(user, null);
         accounts.login(user, "ELDER", "+821012345678");
-        appointment(user, elderId, "2020-01-01T10:00:00+09:00");
+        pastAppointment(user, elderId);
         String upcoming = appointment(user, elderId, "2030-01-01T10:00:00+09:00");
         Jwt guardian = linkedGuardian(user, elderId, "guardian-linked");
 
@@ -227,7 +259,7 @@ class CompanionGuardianApiTest {
     void 지난_진료_기록은_한_번만_작성() throws Exception {
         Jwt user = token("review-elder");
         String elderId = elder(user, null);
-        String past = appointment(user, elderId, "2020-01-01T10:00:00+09:00");
+        String past = pastAppointment(user, elderId);
         Jwt guardian = linkedGuardian(user, elderId, "review-guardian");
         String url = APPOINTMENTS + "/" + past + "/visit-reviews";
         String body = "{\"transport\":\"COMPANION\",\"onTime\":true}";

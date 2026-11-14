@@ -60,7 +60,7 @@ class AppointmentApiTest {
         String body = """
                 {"elderId":"%s","clinicName":"OO병원","clinicAddress":"용인시 처인구","department":"정형외과",
                  "purpose":"진료","location":"본관 2층","preparations":["금식","신분증 지참"],"needsGuardian":true,
-                 "appointmentAt":"2026-11-12T10:30:00+09:00","source":"SMS"}""".formatted(elderId);
+                 "appointmentAt":"2030-11-12T10:30:00+09:00","source":"SMS"}""".formatted(elderId);
 
         String created = mockMvc.perform(post(URL).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated())
@@ -78,7 +78,7 @@ class AppointmentApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.clinicName").value("OO병원"))
                 .andExpect(jsonPath("$.clinicAddress").value("용인시 처인구"))
-                .andExpect(jsonPath("$.appointmentAt").value("2026-11-12T10:30:00+09:00"));
+                .andExpect(jsonPath("$.appointmentAt").value("2030-11-12T10:30:00+09:00"));
 
         mockMvc.perform(patch(URL + "/" + id).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"CANCELLED\"}"))
@@ -87,21 +87,21 @@ class AppointmentApiTest {
                 .andExpect(jsonPath("$.department").value("정형외과"));
 
         mockMvc.perform(get(URL).with(jwt().jwt(user)).param("elderId", elderId.toString())
-                        .param("from", "2026-11-12T00:00:00+09:00")
-                        .param("to", "2026-11-13T00:00:00+09:00"))
+                        .param("from", "2030-11-12T00:00:00+09:00")
+                        .param("to", "2030-11-13T00:00:00+09:00"))
                 .andExpect(jsonPath("$", hasSize(1)));
 
         mockMvc.perform(get(URL).with(jwt().jwt(user)).param("elderId", elderId.toString())
-                        .param("from", "2026-11-13T00:00:00+09:00")
-                        .param("to", "2026-11-14T00:00:00+09:00"))
+                        .param("from", "2030-11-13T00:00:00+09:00")
+                        .param("to", "2030-11-14T00:00:00+09:00"))
                 .andExpect(jsonPath("$", hasSize(0)));
 
         Jwt stranger = token("appointment-stranger");
         elderOf(stranger);
         mockMvc.perform(get(URL + "/" + id).with(jwt().jwt(stranger))).andExpect(status().isNotFound());
         mockMvc.perform(get(URL).with(jwt().jwt(stranger)).param("elderId", elderId.toString())
-                        .param("from", "2026-11-12T00:00:00+09:00")
-                        .param("to", "2026-11-13T00:00:00+09:00"))
+                        .param("from", "2030-11-12T00:00:00+09:00")
+                        .param("to", "2030-11-13T00:00:00+09:00"))
                 .andExpect(status().isNotFound());
     }
 
@@ -110,7 +110,7 @@ class AppointmentApiTest {
         Jwt user = token("appointment-date-only");
         String elderId = elderOf(user);
         String partial = """
-                {"elderId":"%s","clinicName":"OO병원","appointmentDate":"2026-11-12","source":"SMS"%s}""";
+                {"elderId":"%s","clinicName":"OO병원","appointmentDate":"2030-11-12","source":"SMS"%s}""";
 
         mockMvc.perform(post(URL).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
                         .content(partial.formatted(elderId, "")))
@@ -121,29 +121,29 @@ class AppointmentApiTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("DRAFT"))
                 .andExpect(jsonPath("$.helpRequested").value(true))
-                .andExpect(jsonPath("$.appointmentDate").value("2026-11-12"))
+                .andExpect(jsonPath("$.appointmentDate").value("2030-11-12"))
                 .andExpect(jsonPath("$.appointmentAt").isEmpty())
                 .andReturn().getResponse().getContentAsString();
         String id = JsonPath.read(created, "$.appointmentId");
 
         mockMvc.perform(post(URL).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"elderId":"%s","clinicName":"XX의원","appointmentAt":"2026-11-12T14:00:00+09:00","source":"SMS"}"""
+                                {"elderId":"%s","clinicName":"XX의원","appointmentAt":"2030-11-12T14:00:00+09:00","source":"SMS"}"""
                                 .formatted(elderId)))
                 .andExpect(status().isCreated());
         mockMvc.perform(get(URL).with(jwt().jwt(user)).param("elderId", elderId)
-                        .param("from", "2026-11-12T00:00:00+09:00")
-                        .param("to", "2026-11-13T00:00:00+09:00"))
+                        .param("from", "2030-11-12T00:00:00+09:00")
+                        .param("to", "2030-11-13T00:00:00+09:00"))
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].clinicName").value("XX의원"))
                 .andExpect(jsonPath("$[1].appointmentId").value(id))
                 .andExpect(jsonPath("$[1].helpRequested").value(true));
 
         mockMvc.perform(patch(URL + "/" + id).with(jwt().jwt(user)).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"appointmentAt\":\"2026-11-13T00:30:00+09:00\"}"))
+                        .content("{\"appointmentAt\":\"2030-11-13T00:30:00+09:00\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CONFIRMED"))
-                .andExpect(jsonPath("$.appointmentDate").value("2026-11-13"));
+                .andExpect(jsonPath("$.appointmentDate").value("2030-11-13"));
     }
 
     @Test
