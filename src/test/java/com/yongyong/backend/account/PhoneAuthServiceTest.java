@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -26,7 +28,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@TestPropertySource(locations = "classpath:account-test.properties")
+@TestPropertySource(locations = "classpath:account-test.properties",
+        properties = {"app.auth.demo-phones=010-0000-0001", "app.auth.demo-code=135790"})
 @Transactional
 class PhoneAuthServiceTest {
     @Autowired PhoneAuthService auth;
@@ -65,6 +68,17 @@ class PhoneAuthServiceTest {
         assertThatThrownBy(() -> auth.requestCode("01012345678"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("429");
+    }
+
+    @Test
+    void demoPhoneLogsInWithFixedCodeWithoutSms() {
+        when(sms.available()).thenReturn(false);
+        auth.requestCode("010-0000-0001");
+        auth.requestCode("010-0000-0001");
+        assertThat(auth.login("01000000001", "135790", "ELDER").role()).isEqualTo("ELDER");
+        verify(sms, never()).send(anyString(), anyString());
+        assertThatThrownBy(() -> auth.requestCode("01012345678"))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("503");
     }
 
     @Test
