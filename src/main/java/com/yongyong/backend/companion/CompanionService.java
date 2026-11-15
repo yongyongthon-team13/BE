@@ -65,13 +65,15 @@ public class CompanionService {
     @Transactional
     public AssessmentResponse assess(Jwt jwt, UUID appointmentId) {
         Appointment appointment = appointmentService.findAccessible(jwt, appointmentId);
-        AccountService.Mobility mobility =
-                accountService.profile(jwt, appointment.getElderId().toString()).mobility();
-        List<String> reasons = reasonsOf(mobility);
+        AccountService.Profile profile = accountService.profile(jwt, appointment.getElderId().toString());
+        // 기획 기준: 85세 이상이거나 휠체어·보행기 같은 보조기구를 고른 경우에만 추천한다
+        List<String> reasons = new ArrayList<>();
+        if (aged85OrOlder(profile)) reasons.add("AGE_85_OR_OLDER");
+        if (!"NONE".equals(profile.mobility().mobilityAid())) reasons.add("MOBILITY_AID_" + profile.mobility().mobilityAid());
         if (appointment.isNeedsGuardian()) reasons.add("ESCORT_REQUIRED_BY_CLINIC");
         CompanionAssessment saved = assessmentRepository.save(
                 new CompanionAssessment(appointmentId, RULESET_VERSION, reasons));
-        return new AssessmentResponse(saved.getId(), saved.isRecommended(), reasons, reasonText(mobility, appointment),
+        return new AssessmentResponse(saved.getId(), saved.isRecommended(), reasons, reasonText(profile, appointment),
                 SERVICE_NAME, ESTIMATED_COST_WON, true, saved.getRulesetVersion(), saved.getAssessedAt());
     }
 
@@ -135,7 +137,7 @@ public class CompanionService {
         return new RequestResponse(request.getId(), appointment.getId(), profile.name(), profile.homeAddress(),
                 needsVehicle(profile.mobility()), request.getProviderCode(), request.getBookingMethod(),
                 request.getStatus(), SERVICE_NAME, servicePhone, ESTIMATED_COST_WON,
-                reasonText(profile.mobility(), appointment),
+                reasonText(profile, appointment),
                 callScript(appointment, profile), request.getPickupAt(), request.getPickupPlace(),
                 request.getManagerName(), true, request.getRequestedAt());
     }
@@ -176,8 +178,14 @@ public class CompanionService {
         return reasons;
     }
 
-    private static String reasonText(AccountService.Mobility mobility, Appointment appointment) {
+    private static boolean aged85OrOlder(AccountService.Profile profile) {
+        return profile.birthYear() != null && LocalDate.now(Appointment.KOREA).getYear() - profile.birthYear() >= 85;
+    }
+
+    private static String reasonText(AccountService.Profile profile, Appointment appointment) {
+        AccountService.Mobility mobility = profile.mobility();
         List<String> parts = new ArrayList<>();
+        if (aged85OrOlder(profile)) parts.add("85세 이상");
         String aid = aidName(mobility.mobilityAid());
         if (aid != null) parts.add(aid + " 사용");
         if (mobility.stairsDifficult()) parts.add("계단 이용 어려움");
