@@ -98,7 +98,19 @@ class CompanionGuardianApiTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.recommended").value(true))
                 .andExpect(jsonPath("$.reasonCodes[0]").value("MOBILITY_AID_WHEELCHAIR"))
-                .andExpect(jsonPath("$.reasonCodes[1]").value("STAIRS_DIFFICULT"));
+                .andExpect(jsonPath("$.reasonCodes", hasSize(1)));
+
+        Jwt stairs = token("companion-stairs");
+        String stairsElder = elder(stairs, new AccountService.MobilityUpdate("NONE", true, true, true));
+        assess(stairs, appointment(stairs, stairsElder, "2030-01-01T10:00:00+09:00"))
+                .andExpect(jsonPath("$.recommended").value(false));
+
+        Jwt old = token("companion-old");
+        accounts.login(old, "ELDER");
+        String oldElder = accounts.createProfile(old, "김순자", java.time.LocalDate.now().getYear() - 85, null, null).elderId();
+        assess(old, appointment(old, oldElder, "2030-01-01T10:00:00+09:00"))
+                .andExpect(jsonPath("$.recommended").value(true))
+                .andExpect(jsonPath("$.reasonCodes[0]").value("AGE_85_OR_OLDER"));
 
         Jwt easy = token("companion-easy");
         String easyElder = elder(easy, null);
