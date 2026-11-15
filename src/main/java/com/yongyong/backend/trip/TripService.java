@@ -2,6 +2,7 @@ package com.yongyong.backend.trip;
 
 import com.yongyong.backend.account.AccountService;
 import com.yongyong.backend.account.AccountService.User;
+import com.yongyong.backend.account.DataCipher;
 import com.yongyong.backend.trip.TripDtos.*;
 import com.yongyong.backend.push.PushOutboxService;
 import java.time.Duration;
@@ -26,14 +27,17 @@ public class TripService {
     private final Duration noResponseGrace;
     private final JdbcTemplate db;
     private final AccountService accounts;
+    private final DataCipher cipher;
     private final ObjectMapper mapper;
     private final PushOutboxService pushOutbox;
 
-    public TripService(JdbcTemplate db, AccountService accounts, ObjectMapper mapper, PushOutboxService pushOutbox,
+    public TripService(JdbcTemplate db, AccountService accounts, DataCipher cipher, ObjectMapper mapper,
+                       PushOutboxService pushOutbox,
                        @Value("${app.trips.delay-threshold-minutes:10}") long delayThresholdMinutes,
                        @Value("${app.trips.delay-dwell-minutes:5}") long delayDwellMinutes,
                        @Value("${app.trips.no-response-grace-minutes:5}") long noResponseGraceMinutes) {
-        this.db = db; this.accounts = accounts; this.mapper = mapper; this.pushOutbox = pushOutbox;
+        this.db = db; this.accounts = accounts; this.cipher = cipher; this.mapper = mapper;
+        this.pushOutbox = pushOutbox;
         this.delayThreshold = Duration.ofMinutes(Math.max(1, delayThresholdMinutes));
         this.delayDwell = Duration.ofMinutes(Math.max(1, delayDwellMinutes));
         this.noResponseGrace = Duration.ofMinutes(Math.max(1, noResponseGraceMinutes));
@@ -68,6 +72,7 @@ public class TripService {
                 ts(plannedArrival), ts(now));
         db.update("INSERT INTO trip_events(event_id, trip_id, event_type, occurred_at) VALUES (?, ?, 'DEPARTED', ?)",
                 id(), tripId, ts(now));
+        enqueueGuardianTripEvent(tripId, elderId, "DEPARTED");
         return new Started(tripId, request.routePlanId(), "ACTIVE", departure, now, plannedArrival);
     }
 
@@ -168,6 +173,8 @@ public class TripService {
             db.update("UPDATE trips SET status = ?, ended_at = ? WHERE trip_id = ?", status, ts(now), tripId);
             db.update("DELETE FROM trip_current_locations WHERE trip_id = ?", tripId);
         }
+        if ("ARRIVED".equals(event) || "HELP_REQUESTED".equals(event))
+            enqueueGuardianTripEvent(tripId, trip.elderId(), event);
         return new EventResult(eventId, event, now, status);
     }
 
@@ -276,6 +283,35 @@ public class TripService {
                 """, id(), tripId, guardianId);
             pushOutbox.enqueue(guardianId, "TRIP_DELAY", "이동 지연 안내", "어르신의 도착이 예정 시간보다 늦어지고 있습니다.",
                     "{\"type\":\"TRIP_DELAY\",\"tripId\":\"" + tripId + "\"}");
+        }
+    }
+
+    private void enqueueGuardianTripEvent(String tripId, String elderId, String eventType) {
+        if (!consented(elderId, "CAREGIVER_SHARING")) return;
+
+        String bodyTemplate = switch (eventType) {
+            case "DEPARTED" -> "%s님이 병원으로 출발했어요";
+            case "ARRIVED" -> "%s님이 병원에 도착했어요";
+            case "HELP_REQUESTED" -> "%s님이 도움을 요청했어요";
+            default -> null;
+        };
+        if (bodyTemplate == null) return;
+
+        List<String> names = db.query("SELECT display_name_enc FROM elder_profiles WHERE elder_id = ?",
+                (rs, n) -> cipher.decrypt(rs.getString(1)), elderId);
+        String elderName = names.isEmpty() || names.get(0) == null || names.get(0).isBlank()
+                ? "어르신" : names.get(0);
+        String body = bodyTemplate.formatted(elderName);
+        List<String> guardians = db.query(
+                "SELECT guardian_user_id FROM guardian_links WHERE elder_id = ? AND status = 'ACTIVE'",
+                (rs, n) -> rs.getString(1), elderId);
+        for (String guardianId : guardians) {
+            db.update("""
+                    INSERT INTO notifications(notification_id, trip_id, recipient_user_id, channel, type, status, sent_at)
+                    VALUES (?, ?, ?, 'APP', ?, 'QUEUED', NULL)
+                    """, id(), tripId, guardianId, eventType);
+            pushOutbox.enqueue(guardianId, eventType, "이동 안내", body,
+                    "{\"type\":\"" + eventType + "\",\"tripId\":\"" + tripId + "\"}");
         }
     }
 
